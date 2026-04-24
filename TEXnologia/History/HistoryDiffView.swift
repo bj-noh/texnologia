@@ -171,7 +171,7 @@ struct HistoryDiffPopover: View {
             Image(systemName: "clock.arrow.2.circlepath")
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("히스토리 스냅샷을 선택하면 현재 편집 중인 문서와의 차이를 보여줍니다.")
+            Text("Select a history snapshot to compare it with the current document.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -185,7 +185,7 @@ struct HistoryDiffPopover: View {
             Image(systemName: "equal.circle")
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(Color.green.opacity(0.7))
-            Text("변경 사항이 없습니다.")
+            Text("No changes.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }

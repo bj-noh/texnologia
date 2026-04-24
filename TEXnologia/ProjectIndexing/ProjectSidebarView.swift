@@ -88,7 +88,7 @@ struct ProjectSidebarView: View {
                     }
 
                     if !outlineItems.isEmpty {
-                        ExplorerSectionHeader(title: "구조")
+                        ExplorerSectionHeader(title: "Outline")
                             .padding(.horizontal, 12)
                             .padding(.top, 8)
 
@@ -156,7 +156,7 @@ struct ProjectSidebarView: View {
 
     private var explorerHeader: some View {
         HStack(spacing: 12) {
-            Text("프로젝트")
+            Text("Project")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ExplorerStyle.mutedText)
 
@@ -923,11 +923,11 @@ private struct EmptyExplorerState: View {
                 .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(ExplorerStyle.folderIcon)
 
-            Text("프로젝트를 열어주세요")
+            Text("Open a project")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ExplorerStyle.primaryText)
 
-            Text("LaTeX 폴더, .tex 파일, 또는 .zip을 열면 여기에 표시됩니다.")
+            Text("Open a LaTeX folder, a .tex file, or a .zip to see it here.")
                 .font(.system(size: 10, weight: .regular))
                 .foregroundStyle(ExplorerStyle.mutedText)
                 .fixedSize(horizontal: false, vertical: true)

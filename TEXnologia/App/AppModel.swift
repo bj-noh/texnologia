@@ -158,7 +158,7 @@ final class AppModel: ObservableObject {
                 \\date{}
                 \\maketitle
 
-                % 여기에 작성하세요.
+                % Start writing here.
 
                 \\end{document}
                 """
