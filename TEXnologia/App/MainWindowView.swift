@@ -27,16 +27,20 @@ struct MainWindowView: View {
             }
             .onDrop(of: [.fileURL], isTargeted: $isDropTarget, perform: handleDrop)
 
-            IssueDockView(
-                issues: appModel.buildIssues,
-                isExpanded: $issuePanelExpanded,
-                onSelect: appModel.jumpToIssue
-            )
-            .frame(height: appModel.buildIssues.isEmpty ? 0 : (issuePanelExpanded ? 260 : 36))
-            .animation(.easeInOut(duration: 0.16), value: issuePanelExpanded)
-            .animation(.easeInOut(duration: 0.16), value: appModel.buildIssues)
+            if shouldShowIssueDock {
+                IssueDockView(
+                    issues: appModel.buildIssues,
+                    isExpanded: $issuePanelExpanded,
+                    onSelect: appModel.jumpToIssue
+                )
+                .frame(height: issuePanelExpanded ? 260 : 36)
+                .clipped()
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .preferredColorScheme(appModel.settings.appearance.colorScheme)
+        .animation(.easeInOut(duration: 0.16), value: issuePanelExpanded)
+        .animation(.easeInOut(duration: 0.16), value: shouldShowIssueDock)
         .onChange(of: appModel.buildIssues) { _, issues in
             if issues.isEmpty {
                 issuePanelExpanded = false
@@ -92,6 +96,12 @@ struct MainWindowView: View {
         }
     }
 
+    private var shouldShowIssueDock: Bool {
+        appModel.buildIssues.contains { issue in
+            issue.severity == .error || issue.severity == .warning
+        }
+    }
+
     private var toolbar: some View {
         HStack(spacing: 12) {
             TEXnologiaMarkView(size: 26)
@@ -105,26 +115,6 @@ struct MainWindowView: View {
                 .lineLimit(1)
 
             Spacer()
-
-            Picker("Engine", selection: $appModel.settings.defaultEngine) {
-                ForEach(LatexEngine.allCases, id: \.self) { engine in
-                    Text(engine.displayName).tag(engine)
-                }
-            }
-            .onChange(of: appModel.settings.defaultEngine) { _, _ in
-                appModel.updateSettings(appModel.settings)
-            }
-            .frame(width: 140)
-
-            Picker("Year", selection: $appModel.settings.toolchainYear) {
-                ForEach(TexToolchainYear.allCases, id: \.self) { year in
-                    Text(year.displayName).tag(year)
-                }
-            }
-            .onChange(of: appModel.settings.toolchainYear) { _, _ in
-                appModel.updateSettings(appModel.settings)
-            }
-            .frame(width: 128)
 
             Button {
                 historyPresented.toggle()
@@ -146,11 +136,12 @@ struct MainWindowView: View {
             .accessibilityLabel("Export PDF")
             .disabled(!appModel.canExportFocusedPDF)
 
-            Button("Compile") {
-                appModel.compile()
-            }
-            .keyboardShortcut("b", modifiers: [.command])
-            .disabled(appModel.workspace?.mainFileURL == nil || appModel.isImporting)
+            CompileOptionsControl(
+                settings: $appModel.settings,
+                canCompile: appModel.workspace?.mainFileURL != nil && !appModel.isImporting,
+                compile: appModel.compile,
+                persistSettings: { appModel.updateSettings(appModel.settings) }
+            )
         }
         .padding(.horizontal, 12)
         .frame(height: 44)
@@ -186,6 +177,77 @@ struct MainWindowView: View {
         }
 
         return nil
+    }
+}
+
+private struct CompileOptionsControl: View {
+    @Binding var settings: AppSettings
+    var canCompile: Bool
+    var compile: () -> Void
+    var persistSettings: () -> Void
+
+    var body: some View {
+        ControlGroup {
+            Button("Compile") {
+                compile()
+            }
+            .keyboardShortcut("b", modifiers: [.command])
+            .disabled(!canCompile)
+            .help(compileHelpText)
+
+            Menu {
+                Text(currentSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Divider()
+
+                Section("Engine") {
+                    ForEach(LatexEngine.allCases, id: \.self) { engine in
+                        Button {
+                            settings.defaultEngine = engine
+                            persistSettings()
+                        } label: {
+                            menuRow(title: engine.displayName, isSelected: settings.defaultEngine == engine)
+                        }
+                    }
+                }
+
+                Section("TeX Live Year") {
+                    ForEach(TexToolchainYear.allCases, id: \.self) { year in
+                        Button {
+                            settings.toolchainYear = year
+                            persistSettings()
+                        } label: {
+                            menuRow(title: year.displayName, isSelected: settings.toolchainYear == year)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 18)
+            }
+            .help("Compile Settings")
+            .accessibilityLabel("Compile Settings")
+        }
+    }
+
+    private var currentSummary: String {
+        "\(settings.defaultEngine.displayName) · TeX Live \(settings.toolchainYear.displayName)"
+    }
+
+    private var compileHelpText: String {
+        "Compile with \(settings.defaultEngine.displayName), TeX Live \(settings.toolchainYear.displayName)"
+    }
+
+    private func menuRow(title: String, isSelected: Bool) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
+            }
+        }
     }
 }
 
