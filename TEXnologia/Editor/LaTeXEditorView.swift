@@ -31,7 +31,7 @@ struct LaTeXEditorView: NSViewRepresentable {
         textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.autoresizingMask = [.width]
-        textView.textContainerInset = NSSize(width: 14, height: 12)
+        textView.textContainerInset = NSSize(width: 18, height: 12)
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.lineBreakMode = .byWordWrapping
         textView.string = text
@@ -227,7 +227,7 @@ private final class WrappingTextView: NSTextView {
 
 fileprivate final class LineNumberRulerView: NSRulerView {
     private weak var textView: NSTextView?
-    private let gutterWidth: CGFloat = 44
+    private let gutterWidth: CGFloat = 58
 
     init(textView: NSTextView) {
         self.textView = textView
@@ -250,8 +250,16 @@ fileprivate final class LineNumberRulerView: NSRulerView {
             return
         }
 
-        NSColor.textBackgroundColor.setFill()
+        let backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.72)
+        backgroundColor.setFill()
         bounds.fill()
+
+        NSColor.separatorColor.setStroke()
+        let separator = NSBezierPath()
+        separator.move(to: NSPoint(x: bounds.maxX - 0.5, y: bounds.minY))
+        separator.line(to: NSPoint(x: bounds.maxX - 0.5, y: bounds.maxY))
+        separator.lineWidth = 1
+        separator.stroke()
 
         let visibleRect = scrollView.contentView.bounds
         let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
@@ -279,7 +287,7 @@ fileprivate final class LineNumberRulerView: NSRulerView {
                 let label = "\(lineNumber)" as NSString
                 let labelSize = label.size(withAttributes: numberAttributes)
                 let y = textView.textContainerOrigin.y + lineRect.minY - visibleRect.minY + 1
-                let x = gutterWidth - labelSize.width - 8
+                let x = gutterWidth - labelSize.width - 14
                 label.draw(at: NSPoint(x: x, y: y), withAttributes: numberAttributes)
             }
 
