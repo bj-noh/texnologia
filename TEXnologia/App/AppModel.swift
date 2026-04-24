@@ -6,16 +6,19 @@ import UniformTypeIdentifiers
 @MainActor
 final class AppModel: ObservableObject {
     @Published var workspace: Workspace?
+    @Published var sessions: [WorkspaceSession] = []
     @Published var selectedFileURL: URL?
     @Published var editorText: String = ""
     @Published var selectedFilePresentation: FilePresentation = .none
     @Published var projectIndex: ProjectIndex = .empty
     @Published var buildIssues: [BuildIssue] = []
     @Published var pdfDocumentURL: URL?
+    @Published var previewPresentation: FilePresentation = .none
     @Published var editorJump: EditorJump?
     @Published var settings: AppSettings = .default
     @Published var statusMessage: String = "Drop a LaTeX folder, .tex file, or .zip archive to begin."
     @Published var isImporting: Bool = false
+    @Published var history: [HistoryEntry] = []
 
     private let indexer = ProjectIndexer()
     private let buildService = LatexBuildService()
@@ -80,16 +83,21 @@ final class AppModel: ObservableObject {
     func openProject(at rootURL: URL, preferredMainFile: URL? = nil) {
         let displayName = rootURL.lastPathComponent
         let detectedRoot = preferredMainFile ?? indexer.detectRootFile(in: rootURL)
+        let workspaceID = sessions.first { $0.workspace.rootURL.standardizedFileURL == rootURL.standardizedFileURL }?.workspace.id ?? WorkspaceID()
 
-        workspace = Workspace(
-            id: WorkspaceID(),
+        let nextWorkspace = Workspace(
+            id: workspaceID,
             rootURL: rootURL,
             mainFileURL: detectedRoot,
             displayName: displayName
         )
+        let nextIndex = indexer.indexProject(rootURL: rootURL, mainFileURL: detectedRoot)
+
+        workspace = nextWorkspace
+        projectIndex = nextIndex
+        upsertSession(workspace: nextWorkspace, index: nextIndex)
         selectedFileURL = detectedRoot
         selectedFilePresentation = detectedRoot == nil ? .none : .text
-        projectIndex = indexer.indexProject(rootURL: rootURL, mainFileURL: detectedRoot)
         loadSelectedFile()
         statusMessage = detectedRoot == nil
             ? "Opened \(displayName), but no root .tex file was detected yet."
@@ -115,9 +123,17 @@ final class AppModel: ObservableObject {
         }
 
         guard selectedFileURL.isEditableTextFile else {
+            let presentation = selectedFileURL.presentation
+            if case .image = presentation {
+                previewPresentation = presentation
+                statusMessage = "Previewing \(selectedFileURL.lastPathComponent)."
+                return
+            }
+
             editorText = ""
-            selectedFilePresentation = selectedFileURL.presentation
-            if case .pdf(let url) = selectedFilePresentation {
+            selectedFilePresentation = presentation
+            previewPresentation = presentation
+            if case .pdf(let url) = presentation {
                 pdfDocumentURL = url
                 statusMessage = "Opened \(url.lastPathComponent) in the PDF viewer."
             } else {
@@ -144,8 +160,22 @@ final class AppModel: ObservableObject {
     }
 
     func selectFile(_ url: URL) {
+        activateSession(containing: url)
         selectedFileURL = url
         loadSelectedFile()
+    }
+
+    func activateSession(_ id: WorkspaceID) {
+        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        workspace = session.workspace
+        projectIndex = session.index
+        statusMessage = "Activated \(session.workspace.displayName)."
+    }
+
+    private func activateSession(containing url: URL) {
+        guard let session = sessions.first(where: { url.path == $0.workspace.rootURL.path || url.path.hasPrefix($0.workspace.rootURL.path + "/") }) else { return }
+        workspace = session.workspace
+        projectIndex = session.index
     }
 
     func jumpToIssue(_ issue: BuildIssue) {
@@ -171,6 +201,7 @@ final class AppModel: ObservableObject {
         workspace.mainFileURL = mainFile
         self.workspace = workspace
         projectIndex = indexer.indexProject(rootURL: workspace.rootURL, mainFileURL: mainFile)
+        upsertSession(workspace: workspace, index: projectIndex)
 
         if let preferredSelection, fileManager.fileExists(atPath: preferredSelection.path) {
             selectedFileURL = preferredSelection
@@ -191,11 +222,36 @@ final class AppModel: ObservableObject {
         guard let selectedFileURL else { return }
         guard selectedFilePresentation == .text else { return }
         do {
+            captureHistorySnapshot(reason: "Before save")
             try editorText.write(to: selectedFileURL, atomically: true, encoding: selectedFileEncoding)
             statusMessage = "Saved \(selectedFileURL.lastPathComponent)."
         } catch {
             statusMessage = "Could not save \(selectedFileURL.lastPathComponent): \(error.localizedDescription)"
         }
+    }
+
+    func setMainFile(_ url: URL) {
+        guard url.pathExtension.lowercased() == "tex" else {
+            statusMessage = "Only .tex files can be used as the main file."
+            return
+        }
+
+        activateSession(containing: url)
+        guard var workspace else { return }
+        workspace.mainFileURL = url
+        self.workspace = workspace
+        projectIndex = indexer.indexProject(rootURL: workspace.rootURL, mainFileURL: url)
+        upsertSession(workspace: workspace, index: projectIndex)
+        statusMessage = "\(url.lastPathComponent) is now the main file for \(workspace.displayName)."
+    }
+
+    func restoreHistoryEntry(_ entry: HistoryEntry) {
+        selectedFileURL = entry.fileURL
+        selectedFilePresentation = .text
+        selectedFileEncoding = .utf8
+        editorText = entry.text
+        activateSession(containing: entry.fileURL)
+        statusMessage = "Restored \(entry.fileName) from history."
     }
 
     private func loadReadOnlyPreview(for url: URL) {
@@ -215,14 +271,18 @@ final class AppModel: ObservableObject {
     func saveSelectedFileAndBuildIfNeeded() {
         saveSelectedFile()
         if settings.autoBuildOnSave {
-            build()
+            compile()
         }
     }
 
     func build() {
+        compile()
+    }
+
+    func compile() {
         guard let workspace, let mainFileURL = workspace.mainFileURL else { return }
         saveSelectedFile()
-        statusMessage = "Building \(mainFileURL.lastPathComponent)..."
+        statusMessage = "Compiling \(mainFileURL.lastPathComponent)..."
 
         Task {
             let configuration = BuildConfiguration.default(
@@ -234,9 +294,34 @@ final class AppModel: ObservableObject {
             let result = await buildService.build(configuration: configuration)
             buildIssues = result.issues
             pdfDocumentURL = result.pdfURL
+            previewPresentation = result.pdfURL.map { .pdf($0) } ?? previewPresentation
             statusMessage = result.succeeded
-                ? "Build succeeded."
-                : "Build failed with \(result.issues.count) issue(s)."
+                ? "Compile succeeded."
+                : "Compile failed with \(result.issues.count) issue(s)."
+        }
+    }
+
+    private func captureHistorySnapshot(reason: String) {
+        guard let selectedFileURL, selectedFilePresentation == .text else { return }
+        guard history.first?.fileURL != selectedFileURL || history.first?.text != editorText else { return }
+        history.insert(HistoryEntry(
+            fileURL: selectedFileURL,
+            fileName: selectedFileURL.lastPathComponent,
+            text: editorText,
+            createdAt: Date(),
+            reason: reason
+        ), at: 0)
+        if history.count > 80 {
+            history.removeLast(history.count - 80)
+        }
+    }
+
+    private func upsertSession(workspace: Workspace, index: ProjectIndex) {
+        let session = WorkspaceSession(workspace: workspace, index: index)
+        if let existing = sessions.firstIndex(where: { $0.id == workspace.id || $0.workspace.rootURL == workspace.rootURL }) {
+            sessions[existing] = session
+        } else {
+            sessions.append(session)
         }
     }
 

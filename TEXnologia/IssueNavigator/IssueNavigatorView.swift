@@ -39,7 +39,7 @@ struct IssueDockView: View {
                 .fontWeight(.semibold)
 
             if let firstIssue {
-                Text(firstIssue.location.map { "\($0.fileURL.lastPathComponent):\($0.line)" } ?? "Build")
+                Text(firstIssue.location.map { "\($0.fileURL.lastPathComponent):\($0.line)" } ?? "Compile")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(firstIssue.message)
@@ -130,7 +130,7 @@ private struct IssueRow: View {
                 Text(issue.message)
                     .font(.caption)
                     .lineLimit(1)
-                Text(issue.location.map { "\($0.fileURL.lastPathComponent):\($0.line)" } ?? "Build")
+                Text(issue.location.map { "\($0.fileURL.lastPathComponent):\($0.line)" } ?? "Compile")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

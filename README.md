@@ -23,7 +23,7 @@ The current implementation is a Swift Package app using SwiftUI, AppKit, `NSText
 - Local LaTeX build through `latexmk` when available, with direct engine fallback
 - `pdflatex`, `xelatex`, and `lualatex` support
 - TeX Live year selection limited to `2024` and `2025`; default is `pdfLaTeX` with `2024`
-- Build cancellation-safe process wrapper and issue parsing
+- Compile process wrapper and issue parsing
 - Collapsed issue dock by default, expandable when needed
 - Preferences for engine, shell escape, theme, font, wrapping-related editor behavior, spell checking, and artifact visibility
 - Generated build output under `.texnologia-build`
@@ -92,7 +92,7 @@ cp -R dist/TEXnologia.app /Applications/
 2. Click `Open` to choose a LaTeX folder, a `.tex` file, or a `.zip` archive.
 3. Select a `.tex` file in the explorer.
 4. Edit in the center editor.
-5. Press `Command-B` or click `Build`.
+5. Press `Command-B` or click `Compile`.
 6. Review issues in the bottom dock if the build fails.
 7. Click an issue to jump to the source location.
 8. Preview the generated PDF on the right.
@@ -104,7 +104,7 @@ Useful shortcuts:
 | `Command-O` | Open project, `.tex`, or `.zip` |
 | `Shift-Command-O` | Import zip archive |
 | `Command-S` | Save |
-| `Command-B` | Build |
+| `Command-B` | Compile |
 | `Control-Command-F` | Toggle fullscreen |
 
 ## Preferences
@@ -124,7 +124,7 @@ Open the macOS app settings window to configure:
 
 Shell escape is disabled by default.
 
-## Build Output
+## Compile Output
 
 TEXnologia writes generated build files into:
 
@@ -194,7 +194,7 @@ TEXnologia/
   BuildSystem/          # LaTeX process execution and log parsing
   Core/                 # Shared domain models
   Editor/               # AppKit-backed LaTeX editor and syntax highlighter
-  IssueNavigator/       # Build issue dock
+  IssueNavigator/       # Compile issue dock
   PDFViewer/            # PDFKit integration
   Preferences/          # User settings UI and persistence
   ProjectIndexing/      # File tree, outline, labels, citations

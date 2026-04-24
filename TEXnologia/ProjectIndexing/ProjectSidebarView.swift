@@ -5,9 +5,11 @@ import UniformTypeIdentifiers
 struct ProjectSidebarView: View {
     var index: ProjectIndex
     var rootURL: URL?
+    var mainFileURL: URL?
     var hidesIntermediateArtifacts: Bool
     @Binding var selectedFileURL: URL?
     var onSelectFile: (URL) -> Void
+    var onMakeMainFile: (URL) -> Void = { _ in }
     var onRefreshProject: (_ preferredMainFile: URL?, _ preferredSelection: URL?) -> Void
     var onStatus: (String) -> Void
 
@@ -44,6 +46,8 @@ struct ProjectSidebarView: View {
                                 reveal: revealInFinder,
                                 createFile: createTexFile,
                                 createFolder: createFolder,
+                                makeMain: onMakeMainFile,
+                                mainFileURL: mainFileURL,
                                 handleDrop: handleDrop
                             )
                         }
@@ -370,6 +374,122 @@ struct ProjectSidebarView: View {
     }
 }
 
+struct ProjectSessionsSidebarView: View {
+    var sessions: [WorkspaceSession]
+    var activeWorkspaceID: WorkspaceID?
+    var hidesIntermediateArtifacts: Bool
+    @Binding var selectedFileURL: URL?
+    var onActivateSession: (WorkspaceID) -> Void
+    var onSelectFile: (URL) -> Void
+    var onMakeMainFile: (URL) -> Void
+    var onStatus: (String) -> Void
+
+    @State private var trees: [WorkspaceID: [ExplorerNode]] = [:]
+    @State private var expanded: Set<URL> = []
+    @State private var dropTarget: URL?
+
+    var body: some View {
+        List(selection: $selectedFileURL) {
+            Section("Sessions") {
+                ForEach(sessions) { session in
+                    sessionDisclosure(session)
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(.thinMaterial)
+        .onAppear(perform: reload)
+        .onChange(of: sessions) { _, _ in reload() }
+    }
+
+    private func sessionDisclosure(_ session: WorkspaceSession) -> some View {
+        DisclosureGroup(isExpanded: expandedBinding(for: session.workspace.rootURL)) {
+            ForEach(trees[session.id] ?? []) { node in
+                sessionNode(node, session: session)
+            }
+        } label: {
+            sessionHeader(session)
+        }
+        .contextMenu {
+            Button("Activate Session") { onActivateSession(session.id) }
+            Button("Reveal in Finder") { revealInFinder(session.workspace.rootURL) }
+        }
+    }
+
+    private func sessionNode(_ node: ExplorerNode, session: WorkspaceSession) -> some View {
+        ExplorerNodeRow(
+            node: node,
+            selectedFileURL: $selectedFileURL,
+            expanded: $expanded,
+            dropTarget: $dropTarget,
+            select: { url in
+                onActivateSession(session.id)
+                onSelectFile(url)
+            },
+            rename: { _ in onStatus("Use the active project explorer to rename files.") },
+            delete: { _ in onStatus("Use the active project explorer to delete files.") },
+            reveal: revealInFinder,
+            createFile: { _ in onStatus("Use the active project explorer to create files.") },
+            createFolder: { _ in onStatus("Use the active project explorer to create folders.") },
+            makeMain: onMakeMainFile,
+            mainFileURL: session.workspace.mainFileURL,
+            handleDrop: { _, _ in
+                onStatus("Use the active project explorer for drag and drop changes.")
+                return false
+            }
+        )
+    }
+
+    private func sessionHeader(_ session: WorkspaceSession) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: session.id == activeWorkspaceID ? "shippingbox.fill" : "shippingbox")
+                .foregroundStyle(session.id == activeWorkspaceID ? Color.accentColor : Color.secondary)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.workspace.displayName)
+                    .fontWeight(session.id == activeWorkspaceID ? .semibold : .regular)
+                    .lineLimit(1)
+                Text(session.workspace.mainFileURL?.lastPathComponent ?? "No main file")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onActivateSession(session.id)
+        }
+    }
+
+    private func reload() {
+        var next: [WorkspaceID: [ExplorerNode]] = [:]
+        for session in sessions {
+            next[session.id] = ExplorerTreeBuilder(hidesIntermediateArtifacts: hidesIntermediateArtifacts)
+                .children(of: session.workspace.rootURL)
+            expanded.insert(session.workspace.rootURL)
+        }
+        trees = next
+    }
+
+    private func expandedBinding(for url: URL) -> Binding<Bool> {
+        Binding(
+            get: { expanded.contains(url) },
+            set: { isExpanded in
+                if isExpanded {
+                    expanded.insert(url)
+                } else {
+                    expanded.remove(url)
+                }
+            }
+        )
+    }
+
+    private func revealInFinder(_ url: URL) {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+}
+
 private struct ExplorerNodeRow: View {
     var node: ExplorerNode
     @Binding var selectedFileURL: URL?
@@ -381,6 +501,8 @@ private struct ExplorerNodeRow: View {
     var reveal: (URL) -> Void
     var createFile: (URL) -> Void
     var createFolder: (URL) -> Void
+    var makeMain: (URL) -> Void = { _ in }
+    var mainFileURL: URL? = nil
     var handleDrop: ([NSItemProvider], URL) -> Bool
 
     var body: some View {
@@ -398,6 +520,8 @@ private struct ExplorerNodeRow: View {
                         reveal: reveal,
                         createFile: createFile,
                         createFolder: createFolder,
+                        makeMain: makeMain,
+                        mainFileURL: mainFileURL,
                         handleDrop: handleDrop
                     )
                 }
@@ -431,6 +555,12 @@ private struct ExplorerNodeRow: View {
                 .frame(width: 16)
             Text(node.url.lastPathComponent)
                 .lineLimit(1)
+            if node.url == mainFileURL {
+                Image(systemName: "star.fill")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
+                    .help("Main file")
+            }
             Spacer()
         }
         .padding(.vertical, 1)
@@ -446,6 +576,11 @@ private struct ExplorerNodeRow: View {
         if node.isDirectory {
             Button("New TeX File") { createFile(node.url) }
             Button("New Folder") { createFolder(node.url) }
+            Divider()
+        }
+
+        if !node.isDirectory && node.url.pathExtension.lowercased() == "tex" {
+            Button("Use as Main File") { makeMain(node.url) }
             Divider()
         }
 

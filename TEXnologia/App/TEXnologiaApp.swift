@@ -24,7 +24,7 @@ struct TEXnologiaApp: App {
             }
 
             CommandGroup(replacing: .saveItem) {
-                Button("Save") {
+                Button("Save and Compile") {
                     appModel.saveSelectedFileAndBuildIfNeeded()
                 }
                 .keyboardShortcut("s", modifiers: [.command])

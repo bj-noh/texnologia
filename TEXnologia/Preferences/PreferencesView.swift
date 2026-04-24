@@ -18,7 +18,7 @@ struct PreferencesView: View {
 
             buildPane
                 .tabItem {
-                    Label("Build", systemImage: "hammer")
+                    Label("Compile", systemImage: "hammer")
                 }
         }
         .padding()
@@ -33,7 +33,7 @@ struct PreferencesView: View {
                 }
             }
 
-            Toggle("Build on Save", isOn: $settings.autoBuildOnSave)
+            Toggle("Compile on Save", isOn: $settings.autoBuildOnSave)
             Toggle("Hide Intermediate Artifacts", isOn: $settings.hidesIntermediateArtifacts)
         }
         .formStyle(.grouped)

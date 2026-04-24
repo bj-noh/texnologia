@@ -6,13 +6,15 @@ struct MainWindowView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var isDropTarget = false
     @State private var issuePanelExpanded = false
+    @State private var historyPresented = false
+    @State private var rightPaneSplit = false
 
     var body: some View {
         VStack(spacing: 0) {
             toolbar
 
             ZStack {
-                if appModel.workspace == nil {
+                if appModel.sessions.isEmpty {
                     WelcomeDropView(
                         isDropTarget: isDropTarget,
                         statusMessage: appModel.statusMessage,
@@ -47,12 +49,28 @@ struct MainWindowView: View {
             ProjectSidebarView(
                 index: appModel.projectIndex,
                 rootURL: appModel.workspace?.rootURL,
+                mainFileURL: appModel.workspace?.mainFileURL,
                 hidesIntermediateArtifacts: appModel.settings.hidesIntermediateArtifacts,
                 selectedFileURL: $appModel.selectedFileURL,
                 onSelectFile: appModel.selectFile,
+                onMakeMainFile: appModel.setMainFile,
                 onRefreshProject: appModel.refreshProject,
                 onStatus: appModel.setStatus
             )
+            .overlay(alignment: .top) {
+                if appModel.sessions.count > 1 {
+                    ProjectSessionsSidebarView(
+                        sessions: appModel.sessions,
+                        activeWorkspaceID: appModel.workspace?.id,
+                        hidesIntermediateArtifacts: appModel.settings.hidesIntermediateArtifacts,
+                        selectedFileURL: $appModel.selectedFileURL,
+                        onActivateSession: appModel.activateSession,
+                        onSelectFile: appModel.selectFile,
+                        onMakeMainFile: appModel.setMainFile,
+                        onStatus: appModel.setStatus
+                    )
+                }
+            }
             .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
 
             CenterPaneView(
@@ -64,7 +82,11 @@ struct MainWindowView: View {
             )
             .frame(minWidth: 420)
 
-            PDFPaneView(documentURL: appModel.pdfDocumentURL)
+            RightPreviewPane(
+                builtPDFURL: appModel.pdfDocumentURL,
+                previewPresentation: appModel.previewPresentation,
+                isSplit: rightPaneSplit
+            )
                 .frame(minWidth: 360)
         }
     }
@@ -101,10 +123,26 @@ struct MainWindowView: View {
             .onChange(of: appModel.settings.toolchainYear) { _, _ in
                 appModel.updateSettings(appModel.settings)
             }
-            .frame(width: 92)
+            .frame(width: 128)
 
-            Button("Build") {
-                appModel.build()
+            Button {
+                historyPresented.toggle()
+            } label: {
+                Label("History", systemImage: "clock.arrow.circlepath")
+            }
+            .popover(isPresented: $historyPresented) {
+                HistoryPopover(entries: appModel.history, restore: appModel.restoreHistoryEntry)
+            }
+
+            Button {
+                rightPaneSplit.toggle()
+            } label: {
+                Image(systemName: rightPaneSplit ? "rectangle.split.1x2" : "rectangle.split.2x1")
+            }
+            .help("Split preview pane")
+
+            Button("Compile") {
+                appModel.compile()
             }
             .keyboardShortcut("b", modifiers: [.command])
             .disabled(appModel.workspace?.mainFileURL == nil || appModel.isImporting)
@@ -182,6 +220,101 @@ private struct CenterPaneView: View {
                 message: "Choose a .tex, .bib, .sty, or .cls file from the explorer.",
                 fileURL: selectedFileURL
             )
+        }
+    }
+}
+
+private struct RightPreviewPane: View {
+    var builtPDFURL: URL?
+    var previewPresentation: FilePresentation
+    var isSplit: Bool
+
+    var body: some View {
+        if isSplit {
+            VSplitView {
+                PreviewPane(title: "Compiled PDF", presentation: builtPDFURL.map { .pdf($0) } ?? .none)
+                    .frame(minHeight: 220)
+                PreviewPane(title: "Preview", presentation: previewPresentation)
+                    .frame(minHeight: 180)
+            }
+        } else {
+            PreviewPane(
+                title: "Preview",
+                presentation: preferredPresentation
+            )
+        }
+    }
+
+    private var preferredPresentation: FilePresentation {
+        switch previewPresentation {
+        case .image, .pdf:
+            return previewPresentation
+        default:
+            return builtPDFURL.map { .pdf($0) } ?? .none
+        }
+    }
+}
+
+private struct PreviewPane: View {
+    var title: String
+    var presentation: FilePresentation
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(.bar)
+
+            switch presentation {
+            case .pdf(let url):
+                PDFPaneView(documentURL: url)
+            case .image(let url):
+                ImagePreviewPane(fileURL: url)
+            default:
+                PDFPaneView(documentURL: nil)
+            }
+        }
+    }
+}
+
+private struct HistoryPopover: View {
+    var entries: [HistoryEntry]
+    var restore: (HistoryEntry) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("History")
+                .font(.headline)
+                .padding([.horizontal, .top], 12)
+                .padding(.bottom, 6)
+
+            if entries.isEmpty {
+                ContentUnavailableView("No History", systemImage: "clock")
+                    .frame(width: 340, height: 180)
+            } else {
+                List(entries) { entry in
+                    Button {
+                        restore(entry)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(entry.fileName)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                            Text("\(entry.reason) · \(entry.createdAt.formatted(date: .abbreviated, time: .standard))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(width: 380, height: 320)
+            }
         }
     }
 }

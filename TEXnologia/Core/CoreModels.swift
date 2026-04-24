@@ -11,6 +11,16 @@ struct Workspace: Identifiable, Hashable, Codable, Sendable {
     var displayName: String
 }
 
+struct WorkspaceSession: Identifiable, Equatable {
+    var id: WorkspaceID { workspace.id }
+    var workspace: Workspace
+    var index: ProjectIndex
+
+    static func == (lhs: WorkspaceSession, rhs: WorkspaceSession) -> Bool {
+        lhs.workspace == rhs.workspace
+    }
+}
+
 struct TextLocation: Hashable, Codable, Sendable {
     var fileURL: URL
     var line: Int
@@ -54,6 +64,15 @@ struct TextFilePreview: Equatable {
     var isTruncated: Bool {
         previewedByteCount < byteCount
     }
+}
+
+struct HistoryEntry: Identifiable, Hashable {
+    var id = UUID()
+    var fileURL: URL
+    var fileName: String
+    var text: String
+    var createdAt: Date
+    var reason: String
 }
 
 enum FilePresentation: Equatable {
