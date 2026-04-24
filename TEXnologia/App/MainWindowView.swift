@@ -472,37 +472,52 @@ private struct WelcomeDropView: View {
     var importZip: () -> Void
 
     var body: some View {
-        VStack(spacing: 22) {
-            TEXnologiaMarkView(size: 88)
+        GeometryReader { proxy in
+            ScrollView(.vertical) {
+                VStack(spacing: compact(proxy) ? 12 : 18) {
+                    TEXnologiaMarkView(size: compact(proxy) ? 62 : 84)
 
-            VStack(spacing: 6) {
-                Text("TEXnologia")
-                    .font(.system(size: 34, weight: .semibold, design: .rounded))
-                Text(statusMessage)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+                    VStack(spacing: 5) {
+                        Text("TEXnologia")
+                            .font(.system(size: compact(proxy) ? 27 : 34, weight: .semibold, design: .rounded))
+                            .lineLimit(1)
+                        Text(statusMessage)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                    }
 
-            HStack(spacing: 12) {
-                Button {
-                    openProject()
-                } label: {
-                    Label("Open Folder or File", systemImage: "folder.badge.plus")
+                    VStack(spacing: 10) {
+                        Button {
+                            openProject()
+                        } label: {
+                            Label("Open Folder or File", systemImage: "folder.badge.plus")
+                                .frame(minWidth: 210)
+                        }
+                        .controlSize(.large)
+
+                        Button {
+                            importZip()
+                        } label: {
+                            Label("Import Zip", systemImage: "archivebox")
+                                .frame(minWidth: 210)
+                        }
+                        .controlSize(.large)
+                    }
+
+                    Text("Drag a LaTeX folder, .tex file, or .zip archive here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
-                .controlSize(.large)
-
-                Button {
-                    importZip()
-                } label: {
-                    Label("Import Zip", systemImage: "archivebox")
-                }
-                .controlSize(.large)
+                .padding(.horizontal, 24)
+                .padding(.vertical, compact(proxy) ? 16 : 28)
+                .frame(minHeight: proxy.size.height, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
             }
-
-            Text("Drag a LaTeX folder, .tex file, or .zip archive here.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .scrollIndicators(.automatic)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
@@ -510,6 +525,10 @@ private struct WelcomeDropView: View {
                 .strokeBorder(isDropTarget ? Color.accentColor : Color.clear, lineWidth: 3)
                 .padding(16)
         )
+    }
+
+    private func compact(_ proxy: GeometryProxy) -> Bool {
+        proxy.size.height < 430 || proxy.size.width < 520
     }
 }
 
