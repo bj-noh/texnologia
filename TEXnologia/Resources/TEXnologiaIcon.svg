@@ -1,0 +1,29 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="184" fill="url(#texnologia-gradient)"/>
+  <ellipse cx="512" cy="482" rx="328" ry="318" fill="white" fill-opacity="0.13"/>
+
+  <path d="M369 174C400 342 624 342 655 174L728 133H296L369 174Z" fill="#12204A" filter="url(#soft-shadow)"/>
+  <circle cx="512" cy="399" r="102" fill="#F5C88F" filter="url(#soft-shadow)"/>
+  <path d="M410 392C420 262 578 244 615 348C579 334 527 328 481 355C454 371 431 382 410 392Z" fill="#0D1835"/>
+  <path d="M365 873C394 628 630 628 659 873H365Z" fill="#111F43" filter="url(#soft-shadow)"/>
+
+  <path d="M430 413C342 454 278 529 220 588" stroke="#F5C88F" stroke-width="56" stroke-linecap="round"/>
+  <path d="M594 413C682 454 746 529 804 588" stroke="#F5C88F" stroke-width="56" stroke-linecap="round"/>
+
+  <rect x="164" y="492" width="696" height="256" rx="56" fill="#FAFBF3" filter="url(#soft-shadow)"/>
+  <rect x="176" y="504" width="672" height="232" rx="46" stroke="#EAB83A" stroke-width="18"/>
+  <circle cx="226" cy="588" r="40" fill="#F5C88F"/>
+  <circle cx="798" cy="588" r="40" fill="#F5C88F"/>
+
+  <text x="512" y="679" text-anchor="middle" font-family="SF Pro Display, Helvetica, Arial, sans-serif" font-size="156" font-weight="900" letter-spacing="4" fill="#12366E">TEX</text>
+
+  <defs>
+    <linearGradient id="texnologia-gradient" x1="102" y1="82" x2="922" y2="942" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1A3978"/>
+      <stop offset="1" stop-color="#1A9480"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.24"/>
+    </filter>
+  </defs>
+</svg>
