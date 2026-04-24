@@ -153,7 +153,7 @@ require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "scheduleHighlight" "d
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "allowsNonContiguousLayout = true" "non-contiguous editor layout"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "LineNumberRulerView" "editor line numbers"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "hasVerticalRuler = true" "line number ruler enabled"
-require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "lineNumberGutterWidth: CGFloat = 64" "line number gutter width"
+require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "lineNumberGutterWidth: CGFloat = 74" "line number gutter width"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "override var requiredThickness" "line number ruler reserves space"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "NSColor.separatorColor" "line number gutter separator"
 require_pattern "TEXnologia/PDFViewer/PDFPaneView.swift" "NonResizingPDFView" "PDF preview does not request window growth"
