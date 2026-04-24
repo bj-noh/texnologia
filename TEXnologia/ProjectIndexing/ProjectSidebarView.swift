@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -11,6 +12,7 @@ struct ProjectSidebarView: View {
     var onSelectFile: (URL) -> Void
     var onMakeMainFile: (URL) -> Void = { _ in }
     var onRefreshProject: (_ preferredMainFile: URL?, _ preferredSelection: URL?) -> Void
+    var onExternalProjectChange: () -> Void
     var onStatus: (String) -> Void
 
     @State private var tree: [ExplorerNode] = []
@@ -21,6 +23,7 @@ struct ProjectSidebarView: View {
     @State private var creationDraft = ""
     @State private var deleteTarget: URL?
     @State private var dropTarget: URL?
+    @State private var directoryMonitor: ProjectDirectoryMonitor?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -109,8 +112,18 @@ struct ProjectSidebarView: View {
         )
         .background(.thinMaterial)
         .clipShape(Rectangle())
-        .onAppear(perform: reloadTree)
-        .onChange(of: rootURL) { _, _ in reloadTree() }
+        .onAppear {
+            reloadTree()
+            restartDirectoryMonitor()
+        }
+        .onDisappear {
+            directoryMonitor?.stop()
+            directoryMonitor = nil
+        }
+        .onChange(of: rootURL) { _, _ in
+            reloadTree()
+            restartDirectoryMonitor()
+        }
         .onChange(of: index.texFiles) { _, _ in reloadTree() }
         .alert("Delete File?", isPresented: deleteConfirmationBinding) {
             Button("Cancel", role: .cancel) {
@@ -197,6 +210,22 @@ struct ProjectSidebarView: View {
 
         tree = ExplorerTreeBuilder(hidesIntermediateArtifacts: hidesIntermediateArtifacts).children(of: rootURL)
         expanded.insert(rootURL)
+    }
+
+    private func restartDirectoryMonitor() {
+        directoryMonitor?.stop()
+
+        guard let rootURL else {
+            directoryMonitor = nil
+            return
+        }
+
+        let monitor = ProjectDirectoryMonitor(rootURL: rootURL) {
+            reloadTree()
+            onExternalProjectChange()
+        }
+        monitor.start()
+        directoryMonitor = monitor
     }
 
     private func select(_ url: URL) {
@@ -722,6 +751,83 @@ private struct ExplorerNodeRow: View {
             get: { dropTarget == node.url },
             set: { isTargeted in dropTarget = isTargeted ? node.url : nil }
         )
+    }
+}
+
+private final class ProjectDirectoryMonitor {
+    private let rootURL: URL
+    private let onChange: () -> Void
+    private let queue = DispatchQueue(label: "app.texnologia.project-directory-monitor")
+    private var stream: FSEventStreamRef?
+    private var pendingWorkItem: DispatchWorkItem?
+
+    init(rootURL: URL, onChange: @escaping () -> Void) {
+        self.rootURL = rootURL
+        self.onChange = onChange
+    }
+
+    deinit {
+        stop()
+    }
+
+    func start() {
+        stop()
+
+        var context = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passUnretained(self).toOpaque(),
+            retain: nil,
+            release: nil,
+            copyDescription: nil
+        )
+
+        let flags = FSEventStreamCreateFlags(
+            kFSEventStreamCreateFlagUseCFTypes |
+            kFSEventStreamCreateFlagFileEvents |
+            kFSEventStreamCreateFlagNoDefer
+        )
+
+        stream = FSEventStreamCreate(
+            kCFAllocatorDefault,
+            { _, info, _, _, _, _ in
+                guard let info else { return }
+                let monitor = Unmanaged<ProjectDirectoryMonitor>.fromOpaque(info).takeUnretainedValue()
+                monitor.scheduleChange()
+            },
+            &context,
+            [rootURL.path] as CFArray,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            0.45,
+            flags
+        )
+
+        guard let stream else { return }
+        FSEventStreamSetDispatchQueue(stream, queue)
+        FSEventStreamStart(stream)
+    }
+
+    func stop() {
+        pendingWorkItem?.cancel()
+        pendingWorkItem = nil
+
+        guard let stream else { return }
+        FSEventStreamStop(stream)
+        FSEventStreamInvalidate(stream)
+        FSEventStreamRelease(stream)
+        self.stream = nil
+    }
+
+    private func scheduleChange() {
+        pendingWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            DispatchQueue.main.async {
+                self?.onChange()
+            }
+        }
+
+        pendingWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + 0.25, execute: workItem)
     }
 }
 

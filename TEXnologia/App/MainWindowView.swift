@@ -68,6 +68,7 @@ struct MainWindowView: View {
                     onSelectFile: appModel.selectFile,
                     onMakeMainFile: appModel.setMainFile,
                     onRefreshProject: appModel.refreshProject,
+                    onExternalProjectChange: appModel.refreshProjectFromDisk,
                     onStatus: appModel.setStatus
                 )
                 .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)

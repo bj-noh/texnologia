@@ -267,6 +267,23 @@ final class AppModel: ObservableObject {
         loadSelectedFile()
     }
 
+    func refreshProjectFromDisk() {
+        guard var workspace else { return }
+
+        let fileManager = FileManager.default
+        let existingMain = workspace.mainFileURL.flatMap { fileManager.fileExists(atPath: $0.path) ? $0 : nil }
+        let mainFile = existingMain ?? indexer.detectRootFile(in: workspace.rootURL)
+
+        workspace.mainFileURL = mainFile
+        self.workspace = workspace
+        projectIndex = indexer.indexProject(rootURL: workspace.rootURL, mainFileURL: mainFile)
+        upsertSession(workspace: workspace, index: projectIndex)
+
+        if let selectedFileURL, !fileManager.fileExists(atPath: selectedFileURL.path) {
+            self.selectedFileURL = editorFileURL.flatMap { fileManager.fileExists(atPath: $0.path) ? $0 : nil } ?? mainFile
+        }
+    }
+
     func setStatus(_ message: String) {
         statusMessage = message
     }

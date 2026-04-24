@@ -76,6 +76,12 @@ require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "commit?(t
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "renameDraft = url.lastPathComponent" "rename edits full filename"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "renameStemSelectionRange" "rename selects stem by default"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerKeyboardMonitor" "explorer keyboard shortcuts"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ProjectDirectoryMonitor" "external Finder change watcher"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "FSEventStreamCreate" "recursive macOS project directory monitoring"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "kFSEventStreamCreateFlagFileEvents" "file-level external change events"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "restartDirectoryMonitor" "watcher restarts on root changes"
+require_pattern "TEXnologia/App/AppModel.swift" "refreshProjectFromDisk" "external refresh preserves editor text"
+require_pattern "TEXnologia/App/MainWindowView.swift" "onExternalProjectChange: appModel.refreshProjectFromDisk" "external watcher refresh wiring"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "deletePermanently" "actual filesystem delete"
 if grep -q 'New TeX File' "$ROOT_DIR/TEXnologia/ProjectIndexing/ProjectSidebarView.swift"; then
   echo "FAIL new file action should not force TeX wording" >&2
