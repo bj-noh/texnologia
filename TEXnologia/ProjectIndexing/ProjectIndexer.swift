@@ -50,22 +50,33 @@ final class ProjectIndexer {
         return score
     }
 
-    private func parseTexFile(_ fileURL: URL) -> (outline: [OutlineItem], labels: [(String, TextLocation)]) {
-        let text = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+    func outlineItems(in text: String, fileURL: URL) -> [OutlineItem] {
         let lines = text.components(separatedBy: .newlines)
         var outline: [OutlineItem] = []
+
+        for (index, line) in lines.enumerated() {
+            guard let section = capture(#"\\(section|subsection|paragraph)\*?(?:\[[^\]]*\])?\{([^}]*)\}"#, in: line) else {
+                continue
+            }
+
+            outline.append(OutlineItem(
+                title: section.value,
+                command: section.command,
+                level: outlineLevel(for: section.command),
+                location: TextLocation(fileURL: fileURL, line: index + 1, column: 1)
+            ))
+        }
+
+        return outline
+    }
+
+    private func parseTexFile(_ fileURL: URL) -> (outline: [OutlineItem], labels: [(String, TextLocation)]) {
+        let text = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+        let outline = outlineItems(in: text, fileURL: fileURL)
+        let lines = text.components(separatedBy: .newlines)
         var labels: [(String, TextLocation)] = []
 
         for (index, line) in lines.enumerated() {
-            if let section = capture(#"\\(section|subsection|paragraph)\*?(?:\[[^\]]*\])?\{([^}]*)\}"#, in: line) {
-                outline.append(OutlineItem(
-                    title: section.value,
-                    command: section.command,
-                    level: outlineLevel(for: section.command),
-                    location: TextLocation(fileURL: fileURL, line: index + 1, column: 1)
-                ))
-            }
-
             if let label = capture(#"\\label\{([^}]*)\}"#, in: line)?.value {
                 labels.append((label, TextLocation(fileURL: fileURL, line: index + 1, column: 1)))
             }

@@ -48,6 +48,11 @@ final class AppModel: ObservableObject {
         return isEditorSaved ? .saved : .dirty
     }
 
+    var currentEditorOutline: [OutlineItem] {
+        guard selectedFilePresentation == .text, let editorFileURL else { return [] }
+        return indexer.outlineItems(in: editorText, fileURL: editorFileURL)
+    }
+
     func updateEditorText(_ newText: String) {
         editorText = newText
         guard selectedFilePresentation == .text, let editorFileURL else { return }
@@ -196,9 +201,7 @@ final class AppModel: ObservableObject {
             selectedFileEncoding = loaded.encoding
             selectedFilePresentation = .text
             markEditorClean(fileURL: selectedFileURL, text: editorText)
-            if fileSaveStates[selectedFileURL] != nil {
-                fileSaveStates[selectedFileURL] = .saved
-            }
+            fileSaveStates[selectedFileURL] = .saved
             statusMessage = "Opened \(selectedFileURL.lastPathComponent)."
         } catch TextFileLoader.LoadError.fileTooLarge {
             loadReadOnlyPreview(for: selectedFileURL)

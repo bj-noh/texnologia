@@ -2,8 +2,10 @@ import AppKit
 import SwiftUI
 
 private enum EditorLayout {
-    static let lineNumberGutterWidth: CGFloat = 74
-    static let textInset = NSSize(width: 16, height: 12)
+    static let lineNumberGutterWidth: CGFloat = 88
+    static let lineNumberSeparatorPadding: CGFloat = 18
+    static let textInset = NSSize(width: 36, height: 12)
+    static let lineFragmentPadding: CGFloat = 4
 }
 
 struct LaTeXEditorView: NSViewRepresentable {
@@ -37,7 +39,7 @@ struct LaTeXEditorView: NSViewRepresentable {
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.autoresizingMask = [.width]
         textView.textContainerInset = EditorLayout.textInset
-        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.lineFragmentPadding = EditorLayout.lineFragmentPadding
         textView.textContainer?.lineBreakMode = .byWordWrapping
         textView.layoutManager?.allowsNonContiguousLayout = true
         textView.string = text
@@ -160,6 +162,8 @@ struct LaTeXEditorView: NSViewRepresentable {
 
             textView.enclosingScrollView?.hasHorizontalScroller = false
             textView.textContainer?.widthTracksTextView = true
+            textView.textContainerInset = EditorLayout.textInset
+            textView.textContainer?.lineFragmentPadding = EditorLayout.lineFragmentPadding
             updateWrappingWidth(for: textView)
             textView.isHorizontallyResizable = false
             textView.autoresizingMask = [.width]
@@ -344,7 +348,7 @@ fileprivate final class LineNumberRulerView: NSRulerView {
                 let label = "\(lineNumber)" as NSString
                 let labelSize = label.size(withAttributes: numberAttributes)
                 let y = textView.textContainerOrigin.y + lineRect.minY - visibleRect.minY + 1
-                let x = gutterWidth - labelSize.width - 14
+                let x = gutterWidth - labelSize.width - EditorLayout.lineNumberSeparatorPadding
                 label.draw(at: NSPoint(x: x, y: y), withAttributes: numberAttributes)
             }
 

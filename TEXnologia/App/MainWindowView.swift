@@ -63,7 +63,7 @@ struct MainWindowView: View {
                     index: appModel.projectIndex,
                     rootURL: appModel.workspace?.rootURL,
                     mainFileURL: appModel.workspace?.mainFileURL,
-                    outlineFileURL: appModel.editorFileURL,
+                    outlineItems: appModel.currentEditorOutline,
                     hidesIntermediateArtifacts: appModel.settings.hidesIntermediateArtifacts,
                     saveStates: appModel.fileSaveStates,
                     selectedFileURL: $appModel.selectedFileURL,

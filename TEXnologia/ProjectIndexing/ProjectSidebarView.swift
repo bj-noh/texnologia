@@ -7,7 +7,7 @@ struct ProjectSidebarView: View {
     var index: ProjectIndex
     var rootURL: URL?
     var mainFileURL: URL?
-    var outlineFileURL: URL?
+    var outlineItems: [OutlineItem] = []
     var hidesIntermediateArtifacts: Bool
     var saveStates: [URL: ExplorerSaveState] = [:]
     @Binding var selectedFileURL: URL?
@@ -87,12 +87,12 @@ struct ProjectSidebarView: View {
                             .padding(.horizontal, 16)
                     }
 
-                    if !currentFileOutline.isEmpty {
+                    if !outlineItems.isEmpty {
                         ExplorerSectionHeader(title: "구조")
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
 
-                        ForEach(currentFileOutline) { item in
+                        ForEach(outlineItems) { item in
                             Button {
                                 onSelectFile(item.location.fileURL)
                             } label: {
@@ -103,22 +103,6 @@ struct ProjectSidebarView: View {
                                 )
                             }
                             .buttonStyle(.plain)
-                            .padding(.horizontal, 16)
-                            .foregroundStyle(.primary)
-                        }
-                    }
-
-                    if !index.citationKeys.isEmpty {
-                        ExplorerSectionHeader(title: "인용")
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-
-                        ForEach(index.citationKeys, id: \.self) { key in
-                            ExplorerMetadataRow(
-                                title: key,
-                                iconName: "quote.bubble",
-                                accessory: nil
-                            )
                             .padding(.horizontal, 16)
                             .foregroundStyle(.primary)
                         }
@@ -204,14 +188,6 @@ struct ProjectSidebarView: View {
         .padding(.horizontal, 16)
         .padding(.top, 16)
         .padding(.bottom, 12)
-    }
-
-    private var currentFileOutline: [OutlineItem] {
-        guard let outlineFileURL else { return [] }
-        let allowedCommands: Set<String> = ["section", "subsection", "paragraph"]
-        return index.outline.filter { item in
-            item.location.fileURL == outlineFileURL && allowedCommands.contains(item.command)
-        }
     }
 
     private func outlineIconName(for command: String) -> String {
@@ -493,27 +469,24 @@ struct ProjectSidebarView: View {
         return directory.appendingPathComponent("\(base) \(UUID().uuidString).\(ext)")
     }
 
-    private func saveState(for url: URL) -> ExplorerSaveState? {
+    private func saveState(for url: URL) -> ExplorerSaveState {
         Self.saveState(for: url, in: saveStates)
     }
 
-    private static func saveState(for url: URL, in states: [URL: ExplorerSaveState]) -> ExplorerSaveState? {
+    private static func saveState(for url: URL, in states: [URL: ExplorerSaveState]) -> ExplorerSaveState {
         if let directState = states[url] {
             return directState
         }
 
-        guard url.isDirectory else { return nil }
-        let descendantStates = states
+        guard url.isDirectory else { return .saved }
+        let descendantStates = states.lazy
             .filter { fileURL, _ in fileURL.path.hasPrefix(url.path + "/") }
             .map(\.value)
 
         if descendantStates.contains(.dirty) {
             return .dirty
         }
-        if descendantStates.contains(.saved) {
-            return .saved
-        }
-        return nil
+        return .saved
     }
 
     private static func fileURL(from item: NSSecureCoding?) -> URL? {
@@ -851,35 +824,31 @@ private struct ExplorerNodeRow: View {
         )
     }
 
-    private func saveState(for url: URL) -> ExplorerSaveState? {
+    private func saveState(for url: URL) -> ExplorerSaveState {
         if let directState = saveStates[url] {
             return directState
         }
 
-        guard url.isDirectory else { return nil }
-        let descendantStates = saveStates
+        guard url.isDirectory else { return .saved }
+        let descendantStates = saveStates.lazy
             .filter { fileURL, _ in fileURL.path.hasPrefix(url.path + "/") }
             .map(\.value)
 
         if descendantStates.contains(.dirty) {
             return .dirty
         }
-        if descendantStates.contains(.saved) {
-            return .saved
-        }
-        return nil
+        return .saved
     }
 }
 
 private struct ExplorerSaveStateDot: View {
-    var state: ExplorerSaveState?
+    var state: ExplorerSaveState
 
     var body: some View {
         Circle()
             .fill(color)
-            .frame(width: 6, height: 6)
-            .opacity(state == nil ? 0 : 1)
-            .frame(width: 8)
+            .frame(width: 7, height: 7)
+            .frame(width: 12)
             .help(helpText)
     }
 
@@ -889,8 +858,6 @@ private struct ExplorerSaveStateDot: View {
             return .orange
         case .saved:
             return .green
-        case .none:
-            return .clear
         }
     }
 
@@ -900,8 +867,6 @@ private struct ExplorerSaveStateDot: View {
             return "Modified"
         case .saved:
             return "Saved"
-        case .none:
-            return ""
         }
     }
 }
@@ -1286,7 +1251,7 @@ private struct ExplorerKeyboardMonitor: NSViewRepresentable {
 
 private struct FileTreeHeader: View {
     var rootURL: URL
-    var saveState: ExplorerSaveState?
+    var saveState: ExplorerSaveState
 
     var body: some View {
         HStack(spacing: 10) {
