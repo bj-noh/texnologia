@@ -3,7 +3,7 @@ import SwiftUI
 
 private enum EditorLayout {
     static let lineNumberGutterWidth: CGFloat = 74
-    static let textInset = NSSize(width: 26, height: 12)
+    static let textInset = NSSize(width: 16, height: 12)
 }
 
 struct LaTeXEditorView: NSViewRepresentable {
