@@ -127,6 +127,7 @@ struct MainWindowView: View {
                     .transition(.move(edge: .trailing))
                 }
             }
+            .background(SplitViewDividerHitExpander(extraHitAreaOnEachSide: 7))
         }
     }
 
@@ -185,15 +186,6 @@ struct MainWindowView: View {
                     }
                 )
             }
-
-            Button {
-                appModel.exportFocusedPDF()
-            } label: {
-                Image(systemName: "square.and.arrow.down")
-            }
-            .help("Export PDF")
-            .accessibilityLabel("Export PDF")
-            .disabled(!appModel.canExportFocusedPDF)
 
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
@@ -541,6 +533,7 @@ private struct EditorTabBar: View {
 }
 
 private struct CenterPaneView: View {
+    @EnvironmentObject private var appModel: AppModel
     var presentation: FilePresentation
     var selectedFileURL: URL?
     var editorFileURL: URL?
@@ -554,6 +547,21 @@ private struct CenterPaneView: View {
         ZStack(alignment: .topTrailing) {
             content
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .onAppear { SyncTeXBridge.shared.editorFileURL = editorFileURL }
+                .onChange(of: editorFileURL) { _, newValue in
+                    SyncTeXBridge.shared.editorFileURL = newValue
+                }
+                .overlay(alignment: .top) {
+                    if presentation == .text,
+                       let pending = appModel.pendingEdit,
+                       pending.fileURL == editorFileURL {
+                        PendingEditReviewView(appModel: appModel, edit: pending)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .animation(.easeInOut(duration: 0.18), value: appModel.pendingEdit?.id)
 
             if presentation == .text {
                 Button {
@@ -734,6 +742,7 @@ private struct EditorStatusHeader: View {
 }
 
 private struct RightPreviewPane: View {
+    @EnvironmentObject private var appModel: AppModel
     @Binding var focusedPane: PreviewPaneID
     var primaryPresentation: FilePresentation
     var secondaryPresentation: FilePresentation
@@ -761,6 +770,18 @@ private struct RightPreviewPane: View {
             .opacity(0.82)
             .padding(.top, 30)
             .padding(.trailing, 8)
+        }
+        .overlay(alignment: .topLeading) {
+            VStack(spacing: 6) {
+                SyncArrowButton(systemName: "arrow.right", help: "Find the PDF location for the current editor cursor (forward SyncTeX)") {
+                    appModel.syncTeXForward()
+                }
+                SyncArrowButton(systemName: "arrow.left", help: "Find the source line for the current PDF position (reverse SyncTeX)") {
+                    appModel.syncTeXReverse()
+                }
+            }
+            .padding(.top, 30)
+            .padding(.leading, 8)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .fixedSize(horizontal: false, vertical: false)
@@ -1165,5 +1186,30 @@ private struct TEXnologiaMarkView: View {
         .frame(width: size, height: size)
         .shadow(color: .black.opacity(0.16), radius: size * 0.06, x: 0, y: size * 0.03)
         .accessibilityLabel("TEXnologia")
+    }
+}
+
+private struct SyncArrowButton: View {
+    let systemName: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle()
+                        .fill(.thinMaterial)
+                )
+                .overlay(
+                    Circle()
+                        .stroke(Color.accentColor.opacity(0.45), lineWidth: 0.8)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }

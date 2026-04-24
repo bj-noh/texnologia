@@ -5,6 +5,13 @@ import AppKit
 struct TEXnologiaApp: App {
     @StateObject private var appModel = AppModel()
 
+    init() {
+        if CommandLine.arguments.contains("--run-tests") {
+            let code = TestRunner.runAll()
+            Foundation.exit(code)
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             MainWindowView()
@@ -95,10 +102,24 @@ struct TEXnologiaApp: App {
         }
 
         Settings {
-            PreferencesView(settings: Binding(
-                get: { appModel.settings },
-                set: { appModel.updateSettings($0) }
-            ))
+            PreferencesHost(appModel: appModel)
         }
+    }
+}
+
+private struct PreferencesHost: View {
+    let appModel: AppModel
+    @State private var settings: AppSettings
+
+    init(appModel: AppModel) {
+        self.appModel = appModel
+        _settings = State(initialValue: appModel.settings)
+    }
+
+    var body: some View {
+        PreferencesView(settings: $settings)
+            .onChange(of: settings) { _, newValue in
+                appModel.updateSettings(newValue)
+            }
     }
 }

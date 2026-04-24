@@ -67,13 +67,13 @@ enum ChatToolRegistry {
         ),
         LLMToolDef(
             name: "apply_to_open_editor",
-            description: "Replace the content of the currently open editor buffer. Marks the file as dirty so the user can review before saving.",
+            description: "Propose an edit to the currently open editor. The user reviews the change hunk-by-hunk in an inline review UI (accept / manually-edit / reject) before it is applied to the buffer. Always provide the full proposed file contents.",
             inputSchema: [
                 "type": "object",
                 "properties": [
                     "content": [
                         "type": "string",
-                        "description": "Full replacement text for the open editor."
+                        "description": "Full replacement text for the open editor. Will be staged as a reviewable proposal, not applied directly."
                     ]
                 ],
                 "required": ["content"]
@@ -235,7 +235,16 @@ enum ChatToolRegistry {
         guard appModel.editorFileURL != nil else {
             return ChatToolOutcome(content: "No file is currently open in the editor.", isError: true)
         }
-        appModel.updateEditorText(content)
-        return ChatToolOutcome(content: "Updated open editor buffer (\(content.count) chars). User can save with ⌘S.", isError: false)
+        guard let edit = appModel.stagePendingEdit(proposedText: content) else {
+            return ChatToolOutcome(
+                content: "Proposal is identical to the current buffer - nothing to review.",
+                isError: false
+            )
+        }
+        let count = edit.hunks.count
+        return ChatToolOutcome(
+            content: "Staged \(count) change\(count == 1 ? "" : "s") for inline review. The user will accept, edit, or reject each hunk before it's applied.",
+            isError: false
+        )
     }
 }

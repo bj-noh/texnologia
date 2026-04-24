@@ -24,6 +24,7 @@ final class AppModel: ObservableObject {
     @Published var history: [HistoryEntry] = []
     @Published var fileSaveStates: [URL: ExplorerSaveState] = [:]
     @Published var isChatPaneVisible: Bool = false
+    @Published var pendingEdit: PendingEdit?
     @Published private(set) var openEditorTabsByWorkspace: [WorkspaceID: [URL]] = [:]
     @Published private var savedEditorFileURL: URL?
     @Published private var savedEditorText: String = ""
@@ -79,6 +80,92 @@ final class AppModel: ObservableObject {
             dirtyEditorBuffers[editorFileURL] = newText
             fileSaveStates[editorFileURL] = .dirty
         }
+    }
+
+    @discardableResult
+    func stagePendingEdit(proposedText: String) -> PendingEdit? {
+        guard let editorFileURL, selectedFilePresentation == .text else { return nil }
+        let edit = PendingEdit(
+            fileURL: editorFileURL,
+            originalText: editorText,
+            proposedText: proposedText
+        )
+        if edit.isEmpty {
+            pendingEdit = nil
+            return nil
+        }
+        pendingEdit = edit
+        statusMessage = "AI proposed \(edit.hunks.count) change\(edit.hunks.count == 1 ? "" : "s"). Review in the editor."
+        return edit
+    }
+
+    func acceptPendingHunk(id: UUID) {
+        guard var edit = pendingEdit else { return }
+        guard let idx = edit.hunks.firstIndex(where: { $0.id == id }) else { return }
+        edit.hunks[idx].status = .accepted
+        edit.hunks[idx].editedReplacement = nil
+        pendingEdit = edit
+        commitPendingEditIfComplete()
+    }
+
+    func rejectPendingHunk(id: UUID) {
+        guard var edit = pendingEdit else { return }
+        guard let idx = edit.hunks.firstIndex(where: { $0.id == id }) else { return }
+        edit.hunks[idx].status = .rejected
+        edit.hunks[idx].editedReplacement = nil
+        pendingEdit = edit
+        commitPendingEditIfComplete()
+    }
+
+    func updatePendingHunkEdit(id: UUID, replacement: String) {
+        guard var edit = pendingEdit else { return }
+        guard let idx = edit.hunks.firstIndex(where: { $0.id == id }) else { return }
+        edit.hunks[idx].editedReplacement = replacement
+        edit.hunks[idx].status = .edited
+        pendingEdit = edit
+    }
+
+    func confirmPendingHunkEdit(id: UUID) {
+        commitPendingEditIfComplete()
+    }
+
+    func acceptAllPendingHunks() {
+        guard var edit = pendingEdit else { return }
+        for i in edit.hunks.indices where edit.hunks[i].status == .pending {
+            edit.hunks[i].status = .accepted
+            edit.hunks[i].editedReplacement = nil
+        }
+        pendingEdit = edit
+        commitPendingEditIfComplete()
+    }
+
+    func rejectAllPendingHunks() {
+        guard var edit = pendingEdit else { return }
+        for i in edit.hunks.indices where edit.hunks[i].status == .pending {
+            edit.hunks[i].status = .rejected
+            edit.hunks[i].editedReplacement = nil
+        }
+        pendingEdit = edit
+        commitPendingEditIfComplete()
+    }
+
+    func discardPendingEdit() {
+        pendingEdit = nil
+        statusMessage = "Discarded AI edit proposal."
+    }
+
+    private func commitPendingEditIfComplete() {
+        guard let edit = pendingEdit, edit.allResolved else { return }
+        guard edit.fileURL == editorFileURL else {
+            pendingEdit = nil
+            return
+        }
+        let merged = edit.resolvedText()
+        updateEditorText(merged)
+        let accepted = edit.hunks.filter { $0.status == .accepted || $0.status == .edited }.count
+        let rejected = edit.hunks.filter { $0.status == .rejected }.count
+        pendingEdit = nil
+        statusMessage = "Applied \(accepted) change\(accepted == 1 ? "" : "s"), rejected \(rejected)."
     }
 
     init() {
@@ -587,6 +674,76 @@ final class AppModel: ObservableObject {
 
     func setStatus(_ message: String) {
         statusMessage = message
+    }
+
+    func syncTeXForward() {
+        SyncTeXBridge.shared.editorFileURL = editorFileURL
+        guard let (fileURL, line, column) = SyncTeXBridge.shared.currentEditorLocation() else {
+            setStatus("SyncTeX: open a .tex file in the editor first.")
+            return
+        }
+        guard let pdfURL = pdfDocumentURL else {
+            setStatus("SyncTeX: compile the document first to produce a PDF.")
+            return
+        }
+        let synctex = SyncTeXService.resolveBinary(near: [])
+        guard let synctex else {
+            setStatus("SyncTeX: synctex binary not found in TeX Live.")
+            return
+        }
+        setStatus("SyncTeX → searching PDF location for line \(line)…")
+        Task { @MainActor in
+            let result = await SyncTeXService.forward(
+                sourceFile: fileURL,
+                line: line,
+                column: column,
+                outputPDF: pdfURL,
+                synctex: synctex
+            )
+            if let result {
+                NotificationCenter.default.post(
+                    name: .pdfNavigateTo,
+                    object: PDFNavigationTarget(page: result.page, x: result.x, y: result.y)
+                )
+                setStatus("SyncTeX → PDF page \(result.page)")
+            } else {
+                setStatus("SyncTeX forward: no PDF position found for line \(line).")
+            }
+        }
+    }
+
+    func syncTeXReverse() {
+        guard let (pdfURL, page, x, y) = SyncTeXBridge.shared.currentPDFTopLocation() else {
+            setStatus("SyncTeX: open a PDF preview first.")
+            return
+        }
+        let synctex = SyncTeXService.resolveBinary(near: [])
+        guard let synctex else {
+            setStatus("SyncTeX: synctex binary not found in TeX Live.")
+            return
+        }
+        setStatus("SyncTeX ← searching source location for PDF page \(page)…")
+        Task { @MainActor in
+            let result = await SyncTeXService.reverse(
+                page: page, x: x, y: y, outputPDF: pdfURL, synctex: synctex
+            )
+            guard let result else {
+                setStatus("SyncTeX reverse: no source position found.")
+                return
+            }
+            let targetURL = URL(fileURLWithPath: result.inputFile)
+            if editorFileURL != targetURL {
+                if FileManager.default.fileExists(atPath: targetURL.path) {
+                    selectFile(targetURL)
+                }
+            }
+            editorJump = EditorJump(location: TextLocation(
+                fileURL: targetURL,
+                line: max(1, result.line),
+                column: max(0, result.column)
+            ))
+            setStatus("SyncTeX ← \(targetURL.lastPathComponent):\(result.line)")
+        }
     }
 
     func saveSelectedFile() {

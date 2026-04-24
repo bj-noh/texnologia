@@ -4,6 +4,8 @@ struct ChatPaneView: View {
     @ObservedObject var session: ChatSession
     @Binding var isPresented: Bool
     @State private var draft: String = ""
+    @State private var paneHeight: CGFloat = 400
+    @State private var inputHeight: CGFloat = 42
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.openSettings) private var openSettings
 
@@ -16,6 +18,17 @@ struct ChatPaneView: View {
             inputBar
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { paneHeight = proxy.size.height }
+                    .onChange(of: proxy.size.height) { _, newValue in paneHeight = newValue }
+            }
+        )
+    }
+
+    private var maxInputHeight: CGFloat {
+        max(120, paneHeight * 0.5)
     }
 
     private var header: some View {
@@ -129,35 +142,49 @@ struct ChatPaneView: View {
     }
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            TextField("Ask about the project…", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...6)
-                .font(.system(size: 12))
-                .padding(8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 0.5)
-                        )
-                )
-                .disabled(!session.isConfigured || session.isStreaming)
-                .onSubmit(sendIfReady)
+        let enabled = session.isConfigured && !session.isStreaming
+        return HStack(alignment: .bottom, spacing: 8) {
+            ChatInputTextView(
+                text: $draft,
+                measuredHeight: $inputHeight,
+                placeholder: "Ask about the project…  (Return to send · Shift+Return for newline)",
+                font: .systemFont(ofSize: 13),
+                minHeight: 42,
+                maxHeight: maxInputHeight,
+                isEnabled: enabled,
+                onSubmit: sendIfReady
+            )
+            .frame(height: clampedInputHeight)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(nsColor: .textBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 0.6)
+                    )
+            )
+            .opacity(enabled ? 1.0 : 0.55)
 
             Button {
                 sendIfReady()
             } label: {
                 Image(systemName: session.isStreaming ? "ellipsis.circle" : "arrow.up.circle.fill")
-                    .font(.system(size: 20))
+                    .font(.system(size: 22))
                     .foregroundStyle(session.isStreaming ? Color.secondary : Color.accentColor)
             }
             .buttonStyle(.plain)
+            .help("Send message (Return)")
             .disabled(draft.isEmpty || session.isStreaming || !session.isConfigured)
+            .padding(.bottom, 4)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+    }
+
+    private var clampedInputHeight: CGFloat {
+        min(maxInputHeight, max(42, inputHeight))
     }
 
     private func sendIfReady() {

@@ -12,6 +12,7 @@ struct LatexToken {
         case comment
         case brace
         case mathDelimiter
+        case citation
     }
 
     var kind: Kind
@@ -19,20 +20,24 @@ struct LatexToken {
 }
 
 final class LatexTokenizer {
+    private static let citationPattern =
+        #"\\(?:[cC]ite[a-zA-Z]*|[Nn]ocite|parencite|Parencite|autocite|Autocite|textcite|Textcite|fullcite|smartcite|footcite|supercite)\*?(?:\s*\[[^\]]*\])*\s*\{[^}]*\}"#
+
     func tokenize(_ text: String) -> [LatexToken] {
         let nsText = text as NSString
         let fullRange = NSRange(location: 0, length: nsText.length)
         var tokens: [LatexToken] = []
 
-        let patterns: [(LatexToken.Kind, String)] = [
-            (.comment, #"(?m)%.*$"#),
-            (.command, #"\\[A-Za-z@]+|\\."#),
-            (.mathDelimiter, #"\$\$?|\Q\(\E|\Q\)\E|\Q\[\E|\Q\]\E"#),
-            (.brace, #"[{}\[\]]"#)
+        let patterns: [(LatexToken.Kind, String, NSRegularExpression.Options)] = [
+            (.comment, #"(?m)%.*$"#, []),
+            (.command, #"\\[A-Za-z@]+|\\."#, []),
+            (.mathDelimiter, #"\$\$?|\Q\(\E|\Q\)\E|\Q\[\E|\Q\]\E"#, []),
+            (.brace, #"[{}\[\]]"#, []),
+            (.citation, Self.citationPattern, [.dotMatchesLineSeparators])
         ]
 
-        for (kind, pattern) in patterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+        for (kind, pattern, options) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { continue }
             regex.enumerateMatches(in: text, range: fullRange) { match, _, _ in
                 if let range = match?.range {
                     tokens.append(LatexToken(kind: kind, range: range))
@@ -191,7 +196,11 @@ final class LatexSyntaxHighlighter {
             .filter { $0.kind == .comment }
             .map(\.range)
 
-        for token in tokens where token.kind != .comment && !overlapsCommentRange(token.range, commentRanges) {
+        for token in tokens where token.kind != .comment && token.kind != .citation && !overlapsCommentRange(token.range, commentRanges) {
+            ops.append(HighlightPlan.Op(range: token.range, attributes: attributes(for: token.kind, palette: palette), tooltip: nil))
+        }
+
+        for token in tokens where token.kind == .citation && !overlapsCommentRange(token.range, commentRanges) {
             ops.append(HighlightPlan.Op(range: token.range, attributes: attributes(for: token.kind, palette: palette), tooltip: nil))
         }
 
@@ -238,6 +247,8 @@ final class LatexSyntaxHighlighter {
             return [.foregroundColor: palette.brace]
         case .mathDelimiter:
             return [.foregroundColor: palette.math]
+        case .citation:
+            return [.foregroundColor: palette.citation]
         }
     }
 
@@ -283,7 +294,7 @@ final class LatexSyntaxHighlighter {
         var ranges = tokens
             .filter { token in
                 switch token.kind {
-                case .command, .comment, .mathDelimiter:
+                case .command, .comment, .mathDelimiter, .citation:
                     return true
                 case .brace:
                     return false
@@ -399,6 +410,7 @@ struct EditorPalette {
     var comment: NSColor
     var brace: NSColor
     var math: NSColor
+    var citation: NSColor
     var bibEntryType: NSColor
     var bibCitationKey: NSColor
     var bibFieldName: NSColor
@@ -418,6 +430,7 @@ extension EditorTheme {
                 comment: NSColor(red: 0.00, green: 0.42, blue: 0.18, alpha: 1),
                 brace: .secondaryLabelColor,
                 math: .systemOrange,
+                citation: NSColor(red: 0.32, green: 0.68, blue: 0.42, alpha: 1),
                 bibEntryType: .systemPurple,
                 bibCitationKey: .systemTeal,
                 bibFieldName: .systemBlue,
@@ -433,6 +446,7 @@ extension EditorTheme {
                 comment: NSColor(red: 0.24, green: 0.36, blue: 0.16, alpha: 1),
                 brace: NSColor(red: 0.42, green: 0.38, blue: 0.31, alpha: 1),
                 math: NSColor(red: 0.66, green: 0.29, blue: 0.12, alpha: 1),
+                citation: NSColor(red: 0.30, green: 0.60, blue: 0.38, alpha: 1),
                 bibEntryType: NSColor(red: 0.43, green: 0.18, blue: 0.58, alpha: 1),
                 bibCitationKey: NSColor(red: 0.05, green: 0.44, blue: 0.44, alpha: 1),
                 bibFieldName: NSColor(red: 0.10, green: 0.32, blue: 0.66, alpha: 1),
@@ -448,6 +462,7 @@ extension EditorTheme {
                 comment: NSColor(red: 0.38, green: 0.55, blue: 0.32, alpha: 1),
                 brace: NSColor(red: 0.68, green: 0.70, blue: 0.72, alpha: 1),
                 math: NSColor(red: 0.95, green: 0.66, blue: 0.35, alpha: 1),
+                citation: NSColor(red: 0.55, green: 0.86, blue: 0.62, alpha: 1),
                 bibEntryType: NSColor(red: 0.78, green: 0.62, blue: 0.95, alpha: 1),
                 bibCitationKey: NSColor(red: 0.42, green: 0.82, blue: 0.78, alpha: 1),
                 bibFieldName: NSColor(red: 0.51, green: 0.70, blue: 0.96, alpha: 1),
@@ -463,6 +478,7 @@ extension EditorTheme {
                 comment: NSColor(red: 0.30, green: 0.58, blue: 0.40, alpha: 1),
                 brace: NSColor(red: 0.70, green: 0.74, blue: 0.78, alpha: 1),
                 math: NSColor(red: 1.00, green: 0.72, blue: 0.36, alpha: 1),
+                citation: NSColor(red: 0.58, green: 0.90, blue: 0.66, alpha: 1),
                 bibEntryType: NSColor(red: 0.82, green: 0.60, blue: 1.00, alpha: 1),
                 bibCitationKey: NSColor(red: 0.34, green: 0.86, blue: 0.82, alpha: 1),
                 bibFieldName: NSColor(red: 0.42, green: 0.68, blue: 1.00, alpha: 1),

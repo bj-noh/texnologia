@@ -9,6 +9,30 @@ extension Notification.Name {
     static let editorMoveLineUp = Notification.Name("TXEditorMoveLineUp")
     static let editorMoveLineDown = Notification.Name("TXEditorMoveLineDown")
     static let editorPerformFind = Notification.Name("TXEditorPerformFind")
+    static let editorRequestCursor = Notification.Name("TXEditorRequestCursor")
+    static let editorDidReportCursor = Notification.Name("TXEditorDidReportCursor")
+    static let pdfRequestLocation = Notification.Name("TXPDFRequestLocation")
+    static let pdfDidReportLocation = Notification.Name("TXPDFDidReportLocation")
+    static let pdfNavigateTo = Notification.Name("TXPDFNavigateTo")
+}
+
+struct EditorCursorReport {
+    var fileURL: URL
+    var line: Int
+    var column: Int
+}
+
+struct PDFLocationReport {
+    var pdfURL: URL
+    var page: Int
+    var x: Double
+    var y: Double
+}
+
+struct PDFNavigationTarget {
+    var page: Int
+    var x: Double
+    var y: Double
 }
 
 enum EditorTextOps {

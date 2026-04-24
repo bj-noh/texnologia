@@ -671,73 +671,70 @@ private struct ExplorerNodeRow: View {
     var handleDrop: ([NSItemProvider], URL) -> Bool
 
     var body: some View {
-        if node.isDirectory {
-            DisclosureGroup(isExpanded: expandedBinding) {
-                ForEach(node.children) { child in
-                    ExplorerNodeRow(
-                        node: child,
-                        selectedFileURL: $selectedFileURL,
-                        expanded: $expanded,
-                        dropTarget: $dropTarget,
-                        renamingURL: $renamingURL,
-                        renameDraft: $renameDraft,
-                        pendingCreation: $pendingCreation,
-                        creationDraft: $creationDraft,
-                        select: select,
-                        rename: rename,
-                        commitRename: commitRename,
-                        cancelRename: cancelRename,
-                        commitCreation: commitCreation,
-                        cancelCreation: cancelCreation,
-                        delete: delete,
-                        reveal: reveal,
-                        createFile: createFile,
-                        createFolder: createFolder,
-                        makeMain: makeMain,
-                        mainFileURL: mainFileURL,
-                        handleDrop: handleDrop
-                    )
-                }
-
-                if pendingCreation?.directory == node.url {
-                    PendingCreationRow(
-                        draft: $creationDraft,
-                        isDirectory: pendingCreation?.isDirectory == true,
-                        commit: commitCreation,
-                        cancel: cancelCreation
-                    )
-                }
-            } label: {
-                rowLabel
-            }
-            .contextMenu { contextMenu }
-            .onDrag { NSItemProvider(object: node.url as NSURL) }
-            .onDrop(of: [.fileURL], isTargeted: dropBinding) { providers in
-                handleDrop(providers, node.url)
-            }
-        } else {
+        VStack(alignment: .leading, spacing: 0) {
             rowLabel
-                .tag(Optional(node.url))
-                .contextMenu { contextMenu }
-                .onDrag { NSItemProvider(object: node.url as NSURL) }
-                .onChange(of: selectedFileURL) { _, newValue in
-                    guard newValue == node.url else { return }
-                    select(node.url)
+
+            if node.isDirectory && isExpanded {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(node.children) { child in
+                        ExplorerNodeRow(
+                            node: child,
+                            selectedFileURL: $selectedFileURL,
+                            expanded: $expanded,
+                            dropTarget: $dropTarget,
+                            renamingURL: $renamingURL,
+                            renameDraft: $renameDraft,
+                            pendingCreation: $pendingCreation,
+                            creationDraft: $creationDraft,
+                            select: select,
+                            rename: rename,
+                            commitRename: commitRename,
+                            cancelRename: cancelRename,
+                            commitCreation: commitCreation,
+                            cancelCreation: cancelCreation,
+                            delete: delete,
+                            reveal: reveal,
+                            createFile: createFile,
+                            createFolder: createFolder,
+                            makeMain: makeMain,
+                            mainFileURL: mainFileURL,
+                            handleDrop: handleDrop
+                        )
+                    }
+
+                    if pendingCreation?.directory == node.url {
+                        PendingCreationRow(
+                            draft: $creationDraft,
+                            isDirectory: pendingCreation?.isDirectory == true,
+                            commit: commitCreation,
+                            cancel: cancelCreation
+                        )
+                    }
                 }
-                .onDrop(of: [.fileURL], isTargeted: dropBinding) { providers in
-                    handleDrop(providers, node.url)
-                }
+                .padding(.leading, ExplorerStyle.indentStep)
+            }
+        }
+        .tag(Optional(node.url))
+        .contextMenu { contextMenu }
+        .onDrag { NSItemProvider(object: node.url as NSURL) }
+        .onDrop(of: [.fileURL], isTargeted: dropBinding) { providers in
+            handleDrop(providers, node.url)
+        }
+        .onChange(of: selectedFileURL) { _, newValue in
+            guard !node.isDirectory, newValue == node.url else { return }
+            select(node.url)
         }
     }
 
     private var rowLabel: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
+            chevronSlot
             ExplorerSaveStateDot(state: saveState(for: node.url))
 
             Image(systemName: node.iconName)
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: ExplorerStyle.iconFontSize, weight: .regular))
                 .foregroundStyle(node.isDirectory ? ExplorerStyle.folderIcon : ExplorerStyle.fileIcon)
-                .frame(width: 14)
+                .frame(width: ExplorerStyle.iconSlotWidth, height: ExplorerStyle.iconSlotWidth)
 
             if renamingURL == node.url {
                 InlineRenameTextField(
@@ -764,11 +761,45 @@ private struct ExplorerNodeRow: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
-        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .background(rowBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .onTapGesture {
-            select(node.url)
+            if node.isDirectory {
+                toggleExpanded()
+            } else {
+                select(node.url)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chevronSlot: some View {
+        if node.isDirectory {
+            Button {
+                toggleExpanded()
+            } label: {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(ExplorerStyle.chevron)
+                    .frame(width: ExplorerStyle.chevronSlotWidth, height: ExplorerStyle.chevronSlotWidth)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            Color.clear.frame(width: ExplorerStyle.chevronSlotWidth, height: ExplorerStyle.chevronSlotWidth)
+        }
+    }
+
+    private var isExpanded: Bool {
+        expanded.contains(node.url)
+    }
+
+    private func toggleExpanded() {
+        if isExpanded {
+            expanded.remove(node.url)
+        } else {
+            expanded.insert(node.url)
         }
     }
 
@@ -802,19 +833,6 @@ private struct ExplorerNodeRow: View {
         Button("Reveal in Finder") { reveal(node.url) }
         Divider()
         Button("Delete", role: .destructive) { delete(node.url) }
-    }
-
-    private var expandedBinding: Binding<Bool> {
-        Binding(
-            get: { expanded.contains(node.url) },
-            set: { isExpanded in
-                if isExpanded {
-                    expanded.insert(node.url)
-                } else {
-                    expanded.remove(node.url)
-                }
-            }
-        )
     }
 
     private var dropBinding: Binding<Bool> {
@@ -966,6 +984,11 @@ private enum ExplorerStyle {
     static let fileIcon = Color(nsColor: .tertiaryLabelColor)
     static let iconButton = Color(nsColor: .secondaryLabelColor)
     static let accent = Color.orange.opacity(0.9)
+    static let chevron = Color(nsColor: .tertiaryLabelColor)
+    static let indentStep: CGFloat = 14
+    static let chevronSlotWidth: CGFloat = 12
+    static let iconSlotWidth: CGFloat = 14
+    static let iconFontSize: CGFloat = 11
 }
 
 private final class ProjectDirectoryMonitor {

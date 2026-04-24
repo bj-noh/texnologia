@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 enum HistoryCompareTarget: Hashable {
     case currentEditor
+    case base
     case snapshot(UUID)
 }
 
@@ -15,6 +16,16 @@ struct HistoryDiffPopover: View {
 
     @State private var selectedEntryID: UUID?
     @State private var compareTarget: HistoryCompareTarget = .currentEditor
+    @State private var baseEntryID: UUID?
+
+    var fileFilteredEntries: [HistoryEntry] {
+        HistoryDiffPopover.filter(entries: entries, forFileURL: currentEditorFileURL)
+    }
+
+    static func filter(entries: [HistoryEntry], forFileURL fileURL: URL?) -> [HistoryEntry] {
+        guard let fileURL else { return entries }
+        return entries.filter { $0.fileURL == fileURL }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -33,13 +44,31 @@ struct HistoryDiffPopover: View {
         }
         .frame(width: 860, height: 560)
         .onAppear {
-            if selectedEntryID == nil, let first = entries.first {
-                selectedEntryID = first.id
+            let scoped = fileFilteredEntries
+            if selectedEntryID == nil || !scoped.contains(where: { $0.id == selectedEntryID }) {
+                selectedEntryID = scoped.first?.id
+            }
+            if let baseID = baseEntryID, !scoped.contains(where: { $0.id == baseID }) {
+                baseEntryID = nil
+                if compareTarget == .base { compareTarget = .currentEditor }
             }
         }
-        .onChange(of: entries) { _, newValue in
-            if let current = selectedEntryID, !newValue.contains(where: { $0.id == current }) {
-                selectedEntryID = newValue.first?.id
+        .onChange(of: currentEditorFileURL) { _, _ in
+            let scoped = fileFilteredEntries
+            selectedEntryID = scoped.first?.id
+            if let baseID = baseEntryID, !scoped.contains(where: { $0.id == baseID }) {
+                baseEntryID = nil
+                if compareTarget == .base { compareTarget = .currentEditor }
+            }
+        }
+        .onChange(of: entries) { _, _ in
+            let scoped = fileFilteredEntries
+            if let current = selectedEntryID, !scoped.contains(where: { $0.id == current }) {
+                selectedEntryID = scoped.first?.id
+            }
+            if let baseID = baseEntryID, !scoped.contains(where: { $0.id == baseID }) {
+                baseEntryID = nil
+                if compareTarget == .base { compareTarget = .currentEditor }
             }
         }
     }
@@ -52,8 +81,15 @@ struct HistoryDiffPopover: View {
                 Text("Snapshots")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
+                if let fileURL = currentEditorFileURL {
+                    Text("· \(fileURL.lastPathComponent)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 Spacer()
-                Text("\(entries.count)")
+                Text("\(fileFilteredEntries.count)")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.tertiary)
             }
@@ -61,7 +97,7 @@ struct HistoryDiffPopover: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
 
-            if entries.isEmpty {
+            if fileFilteredEntries.isEmpty {
                 Spacer()
                 ContentUnavailableView("No History", systemImage: "clock")
                     .font(.caption)
@@ -69,14 +105,28 @@ struct HistoryDiffPopover: View {
             } else {
                 ScrollView(.vertical) {
                     LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(entries) { entry in
+                        ForEach(fileFilteredEntries) { entry in
                             SnapshotRow(
                                 entry: entry,
                                 isSelected: entry.id == selectedEntryID,
+                                isBase: entry.id == baseEntryID,
                                 stats: stats(for: entry)
                             )
                             .onTapGesture {
                                 selectedEntryID = entry.id
+                            }
+                            .contextMenu {
+                                if entry.id == baseEntryID {
+                                    Button("Clear Base") {
+                                        baseEntryID = nil
+                                        if compareTarget == .base { compareTarget = .currentEditor }
+                                    }
+                                } else {
+                                    Button("Set as Base") {
+                                        baseEntryID = entry.id
+                                        compareTarget = .base
+                                    }
+                                }
                             }
                         }
                     }
@@ -114,12 +164,18 @@ struct HistoryDiffPopover: View {
 
                 Picker("", selection: $compareTarget) {
                     Text("vs Current").tag(HistoryCompareTarget.currentEditor)
+                    if let baseID = baseEntryID,
+                       let baseEntry = fileFilteredEntries.first(where: { $0.id == baseID }) {
+                        Text("vs Base (\(baseEntry.createdAt.formatted(date: .omitted, time: .shortened)))")
+                            .tag(HistoryCompareTarget.base)
+                    }
                     ForEach(comparisonCandidates, id: \.self) { candidate in
                         Text(label(for: candidate)).tag(HistoryCompareTarget.snapshot(candidate))
                     }
                 }
                 .labelsHidden()
-                .frame(width: 170)
+                .frame(width: 200)
+                .help("Select what to compare the selected snapshot against")
 
                 Menu {
                     Button("Copy DIF LaTeX to Clipboard") { copyDIFToClipboard() }
@@ -196,28 +252,31 @@ struct HistoryDiffPopover: View {
 
     private var selectedEntry: HistoryEntry? {
         guard let id = selectedEntryID else { return nil }
-        return entries.first(where: { $0.id == id })
+        return fileFilteredEntries.first(where: { $0.id == id })
     }
 
-    private var comparisonBaseText: String {
+    var comparisonBaseText: String {
         switch compareTarget {
         case .currentEditor:
             return currentEditorText
+        case .base:
+            guard let baseID = baseEntryID else { return currentEditorText }
+            return fileFilteredEntries.first(where: { $0.id == baseID })?.text ?? currentEditorText
         case .snapshot(let id):
-            return entries.first(where: { $0.id == id })?.text ?? ""
+            return fileFilteredEntries.first(where: { $0.id == id })?.text ?? ""
         }
     }
 
     private var comparisonCandidates: [UUID] {
         guard let selected = selectedEntry else { return [] }
-        return entries
-            .filter { $0.id != selected.id }
+        return fileFilteredEntries
+            .filter { $0.id != selected.id && $0.id != baseEntryID }
             .prefix(12)
             .map(\.id)
     }
 
     private func label(for id: UUID) -> String {
-        guard let entry = entries.first(where: { $0.id == id }) else { return "…" }
+        guard let entry = fileFilteredEntries.first(where: { $0.id == id }) else { return "…" }
         return "vs " + entry.createdAt.formatted(date: .omitted, time: .shortened)
     }
 
@@ -235,7 +294,19 @@ struct HistoryDiffPopover: View {
     }
 
     private func stats(for entry: HistoryEntry) -> DiffStats {
-        let lines = HistoryDiffComputer.computeLines(from: entry.text, to: currentEditorText)
+        let baseText: String
+        switch compareTarget {
+        case .currentEditor: baseText = currentEditorText
+        case .base:
+            if let baseID = baseEntryID, let baseEntry = fileFilteredEntries.first(where: { $0.id == baseID }) {
+                baseText = baseEntry.text
+            } else {
+                baseText = currentEditorText
+            }
+        case .snapshot(let id):
+            baseText = fileFilteredEntries.first(where: { $0.id == id })?.text ?? currentEditorText
+        }
+        let lines = HistoryDiffComputer.computeLines(from: entry.text, to: baseText)
         return HistoryDiffComputer.stats(for: lines)
     }
 
@@ -276,19 +347,32 @@ struct HistoryDiffPopover: View {
 private struct SnapshotRow: View {
     let entry: HistoryEntry
     let isSelected: Bool
+    var isBase: Bool = false
     let stats: DiffStats
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "doc.text")
+            Image(systemName: isBase ? "flag.fill" : "doc.text")
                 .font(.system(size: 11))
-                .foregroundStyle(isSelected ? Color.accentColor : Color(nsColor: .tertiaryLabelColor))
+                .foregroundStyle(isBase ? Color.orange : (isSelected ? Color.accentColor : Color(nsColor: .tertiaryLabelColor)))
                 .frame(width: 14)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.fileName)
-                    .font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(entry.fileName)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                    if isBase {
+                        Text("BASE")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Color.orange)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule().stroke(Color.orange.opacity(0.7), lineWidth: 0.5)
+                            )
+                    }
+                }
 
                 Text("\(entry.reason) · \(entry.createdAt.formatted(.relative(presentation: .named)))")
                     .font(.system(size: 9))

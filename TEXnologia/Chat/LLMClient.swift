@@ -39,6 +39,15 @@ protocol LLMClient {
     ) async throws -> LLMResponse
 }
 
+enum LLMHTTP {
+    static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 600
+        config.timeoutIntervalForResource = 900
+        return URLSession(configuration: config)
+    }()
+}
+
 enum LLMClientFactory {
     static func make(for config: LLMConfiguration) throws -> LLMClient {
         guard config.isConfigured else { throw LLMError.missingAPIKey }
@@ -96,12 +105,13 @@ final class AnthropicClient: LLMClient {
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
+        request.timeoutInterval = 600
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await LLMHTTP.session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMError.invalidResponse("no http response")
         }
@@ -401,13 +411,14 @@ final class OpenAICompatibleClient: LLMClient {
     private func postJSON(to url: URL, body: [String: Any]) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 600
         if provider.requiresAPIKey {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await LLMHTTP.session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMError.invalidResponse("no http response")
         }

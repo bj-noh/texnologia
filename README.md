@@ -1,192 +1,113 @@
-# TEXnologia 
+# TEXnologia
+
 <img src="TEXnologia/Resources/TEXnologiaIcon.svg" alt="TEXnologia icon" width="96" />
 
-TEXnologia is a macOS-native LaTeX writing IDE prototype focused on a fast research-writing loop:
+**A macOS-native LaTeX IDE with AI built in. Bring your own API key.**
 
-open a project, edit `.tex`, build locally, jump to errors, and preview the PDF.
-
-The current implementation is a Swift Package app using SwiftUI, AppKit, `NSTextView`, and PDFKit. It assumes a local TeX distribution such as MacTeX or BasicTeX is already installed.
-
+Write LaTeX in a fast native editor, compile locally, preview the PDF, and let the AI assistant revise your manuscript through an inline diff you control. Every provider you care about — Anthropic, OpenAI, Gemini, Grok, DeepSeek, Mistral, Groq, or local Ollama — just paste your token.
 
 ![TEXnologia welcome screen](assets/texnologia-fullscreen1.png)
-
 ![TEXnologia with project explorer, editor, PDF preview, and AI pane](assets/texnologia-fullscreen2.png)
 
-## Current Features
+## Why
 
-- LaTeX-aware source editor using AppKit `NSTextView` with debounced highlighting, line-number gutter, find/incremental find, toggle comment, duplicate/delete/move line, and adjustable font size
-- Syntax highlighting for commands, comments, braces, and math delimiters
-- BibTeX syntax highlighting for entry types, citation keys, field names, values, comments, numbers, and punctuation
-- Word-based wrapping with horizontal scrolling disabled
-- English spelling/grammar checking while suppressing red underlines for TeX syntax ranges
-- Multi-session workspace with a session tab bar and per-session multi-file editor tab bar, including dirty/saved indicators
-- Create empty projects, open folders/`.tex` files, or import `.zip` archives from the session `+` menu
-- Project explorer with rename, delete-to-trash confirmation, drag/drop, new file/folder, refresh, Finder reveal, external filesystem change watcher, and saved/dirty dot states aggregated to folders
-- Outline section that follows the currently open editor file
-- Preview pane with a Preview A / Preview B split and focus indicator, routed rendering for PDF, images, JSON, and read-only generated log/aux/out/fls files
-- Per-file edit history with GitHub-style diff hunks and DIF LaTeX export (`\DIFaddbegin`/`\DIFdelbegin`) for manuscript revisions
-- AI Assistant side pane with configurable provider/model/API key, plus tool-use loop against the project (list, read, write, replace-in-file, apply-to-open-editor)
-- Session persistence: open sessions, active session, open editor tabs, active tab, and chat-pane visibility are restored on next launch
-- Local LaTeX build through `latexmk` when available, with direct engine fallback
-- `pdflatex`, `xelatex`, and `lualatex` support
-- TeX Live year selection limited to `2024` and `2025`; default is `pdfLaTeX` with `2024`
-- Compile process wrapper and issue parsing
-- Collapsed issue dock by default, expandable when needed
-- Preferences for appearance, editor theme/font/line spacing, engine, TeX Live year, shell escape, auto-build, artifact visibility, spell checking, and AI provider/model/key/max tokens
-- Generated build output under `.texnologia-build`
-- Windows host plan under `platforms/windows`
+Most LaTeX tools are either cloud SaaS (ongoing fees, your drafts on someone else's server) or unmaintained native editors that haven't caught up to how you actually write in 2025. TEXnologia is what we'd have wanted in one place:
 
-## Requirements
+- **A real native editor.** AppKit text view, syntax highlighting, find, word wrapping, line commands. No Electron.
+- **Local compiles.** pdflatex / xelatex / lualatex with automatic bibtex **and** biber.
+- **AI assistance that stays in your hands.** Bring your own API key. Proposals come back as a reviewable diff — accept a hunk, edit it first, or reject it. Never surprise rewrites.
+- **A proper history with TeXdiff export.** Review per-file changes, pick any snapshot as your base, export `\DIFadd` / `\DIFdel` markup for revisions.
+- **SyncTeX jumps.** One button jumps between the editor caret and the PDF.
+- **Your files stay on disk.** No sync service, no account, no telemetry.
 
-- macOS 14 or newer
-- Xcode Command Line Tools or Xcode with Swift 5.9+
-- MacTeX or BasicTeX
-- `latexmk` recommended
+## What you get
 
-Check Swift:
+- LaTeX editor with command / comment / brace / math highlighting, citation commands in their own color, multi-tab, multi-session workspaces.
+- Local compile via `latexmk` when available, direct engine otherwise. Detects biblatex (`.bcf`) and runs biber automatically.
+- AI pane with tool use: read files, propose edits, insert content. Every proposal is a staged diff with Accept / Use AI / Reset / Reject per hunk.
+- Per-file snapshot history. Pick any snapshot as your base and diff everything against it. Export TeXdiff.
+- PDF preview (single or split), inline error navigation, project explorer with drag/drop, rename, Finder reveal, external-change watcher.
+- Keyboard shortcuts for every common editor operation (find, toggle comment, move line, duplicate/delete line, select line, font size).
+
+## Quick start
 
 ```bash
-swift --version
-```
+# Build the .app bundle.
+./scripts/build_app_bundle.sh
 
-Check TeX:
-
-```bash
-/usr/local/texlive/2024/bin/universal-darwin/pdflatex --version
-/Library/TeX/texbin/latexmk --version
-```
-
-If `latexmk` is missing but `pdflatex`, `xelatex`, or `lualatex` exists, TEXnologia can still use the direct-engine fallback.
-TEXnologia searches the selected TeX Live year first, then falls back to the active `/Library/TeX/texbin` symlink.
-
-## Run In Development
-
-From the repository root:
-
-```bash
-swift run TEXnologia
-```
-
-This launches the app directly from Swift Package Manager.
-
-## Build A macOS App Bundle
-
-```bash
-scripts/build_app_bundle.sh
-```
-
-The generated app appears at:
-
-```text
-dist/TEXnologia.app
-```
-
-Open it:
-
-```bash
+# Launch.
 open dist/TEXnologia.app
 ```
 
-Optional: copy it to Applications after building:
+Drop a folder with `.tex` files onto the welcome screen, or press `Cmd+O` to open one. Press `Cmd+S` to save and compile.
 
-```bash
-cp -R dist/TEXnologia.app /Applications/
-```
+Requires **macOS 14+**, a TeX Live install (MacTeX or BasicTeX — biber and latexmk recommended), and Swift 5.9+ for building from source.
 
-## Use The App
+## Using AI
 
-1. Launch TEXnologia.
-2. Click the `+` in the session tab bar to create an empty project, open a folder/`.tex` file, or import a `.zip` archive.
-3. Select a `.tex` file in the explorer. Multiple files can stay open as editor tabs below the session bar.
-4. Edit in the center editor.
-5. Press `Command-S` to save (and compile) or click `Compile`.
-6. Review issues in the bottom dock if the build fails.
-7. Click an issue to jump to the source location.
-8. Preview the generated PDF on the right. Use the split button for a two-pane preview.
-9. Toggle the AI Assistant pane from the toolbar; configure the provider and API key under `Preferences → AI`.
+Open **Settings → AI**, pick a provider, paste your API key, hit save. That's it — the assistant can now read your project and propose edits.
 
-Useful shortcuts:
+Supported providers out of the box:
+- **Anthropic** (Claude Opus / Sonnet / Haiku)
+- **OpenAI** (GPT-5, o-series, Codex — Pro and Codex route through the Responses API automatically)
+- **Google** (Gemini)
+- **xAI** (Grok)
+- **DeepSeek**, **Mistral**, **Groq**
+- **Ollama** (local, no key required)
+
+Proposed edits never touch your buffer directly. They're staged as an inline diff. You'll see the AI suggestion (read-only, copyable) alongside your editable version — tweak before accepting.
+
+## Shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| `Command-O` | Open project, `.tex`, or `.zip` |
-| `Shift-Command-O` | Import zip archive |
-| `Command-S` | Save and compile |
-| `Command-B` | Compile |
-| `Command-F` | Find |
-| `Command-/` | Toggle line comment |
-| `Command-L` | Select line |
-| `Shift-Command-D` | Duplicate line |
-| `Shift-Command-K` | Delete line |
+| `Cmd-O` / `Shift-Cmd-O` | Open project / import .zip |
+| `Cmd-S` | Save and compile |
+| `Cmd-B` | Compile |
+| `Cmd-F` | Find |
+| `Cmd-/` | Toggle line comment |
+| `Cmd-L` | Select line |
+| `Shift-Cmd-D` | Duplicate line |
+| `Shift-Cmd-K` | Delete line |
 | `Option-Up/Down` | Move line up/down |
-| `Command-=` / `Command--` / `Command-0` | Increase / decrease / reset editor font |
-| `Control-Command-F` | Toggle fullscreen |
+| `Cmd-=` / `Cmd--` / `Cmd-0` | Editor font bigger / smaller / reset |
+| `Ctrl-Cmd-F` | Toggle fullscreen |
 
-## Preferences
+## Compile output
 
-Open the macOS app settings window to configure:
+Build artifacts live under `<project>/.texnologia-build/`. The project explorer hides it by default (toggleable in Settings).
 
-- Appearance: system, light, or dark
-- Editor theme
-- Editor font family and size
-- Line spacing
-- Spell checking
-- Default TeX engine
-- TeX Live year: `2024` or `2025`
-- Shell escape
-- Auto-build on save
-- Intermediate artifact hiding
-- AI provider, model, API key, and max tokens
+Shell escape is off by default. Enable it per project under **Settings → Compile** if you need shell-escape packages.
 
-Shell escape is disabled by default. API keys are stored under `~/Library/Application Support/TEXnologia` and are not written into the project.
-
-## Compile Output
-
-TEXnologia writes generated build files into:
-
-```text
-<project>/.texnologia-build/
-```
-
-The explorer hides this folder by default when intermediate artifact hiding is enabled.
-
-## Validation
-
-Run the core checks:
+## Build from source
 
 ```bash
-swift build
-scripts/verify_feature_contracts.sh
-scripts/verify_editor_wrapping.sh
-scripts/verify_comment_highlighting.sh
-scripts/verify_app_icon_dimensions.sh
+swift run TEXnologia              # run in development
+./scripts/build_app_bundle.sh     # produce dist/TEXnologia.app
+./.build/debug/TEXnologia --run-tests   # run the internal test suite
 ```
 
-## Windows Status
+The test suite runs entirely in-process (no XCTest dependency) and currently covers 230+ cases across history diff logic, SyncTeX parsing, math-hover detection, and line/column computation.
 
-The current app target is macOS-only because it depends on SwiftUI, AppKit, PDFKit, and `NSTextView`.
+## Repository layout
 
-Windows support should be implemented as a separate desktop host under `platforms/windows/`. See [platforms/windows/README.md](platforms/windows/README.md) for the up-to-date porting plan and feature parity targets.
-
-## Repository Layout
-
-```text
+```
 TEXnologia/
-  App/                  # SwiftUI app shell, app model, and session persistence
-  BuildSystem/          # LaTeX process execution and log parsing
-  Chat/                 # AI assistant models, clients, tools, and UI
-  Core/                 # Shared domain models
-  Editor/               # AppKit-backed LaTeX editor and syntax highlighter
-  History/              # Per-file edit history and DIF LaTeX export
-  IssueNavigator/       # Compile issue dock
-  PDFViewer/            # PDFKit integration
-  Preferences/          # User settings UI and persistence
-  ProjectIndexing/      # File tree, outline, labels, citations
-  Resources/            # App icon source
-platforms/windows/      # Windows host planning scaffold
-scripts/                # Build and verification scripts
+  App/              SwiftUI app shell, AppModel, session persistence
+  BuildSystem/      latex / bibtex / biber / synctex wrappers
+  Chat/             AI client, tools, pending-edit review UI
+  Core/             Shared domain models
+  Editor/           NSTextView-backed editor, syntax highlighter, math detector
+  History/          Per-file history, diff engine, TeXdiff export
+  IssueNavigator/   Compile issue dock
+  PDFViewer/        PDFKit integration
+  Preferences/      Settings UI & persistence
+  ProjectIndexing/  Project explorer, outline, indexer
+  Tests/            In-process test runner
+platforms/windows/  Porting scaffold
+scripts/            Build and verification scripts
 ```
 
 ## Notes
 
-This project is independent and does not copy the branding, UI design, icons, proprietary names, or proprietary implementation of any existing LaTeX editor. It references the broad functional category of professional LaTeX writing tools while defining its own product direction and implementation.
+Independent project. Does not copy the branding, UI, icons, or proprietary names of any existing LaTeX editor. References the broad functional category of professional LaTeX writing tools while defining its own direction.

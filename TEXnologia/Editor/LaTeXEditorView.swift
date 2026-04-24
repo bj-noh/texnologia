@@ -78,6 +78,7 @@ struct LaTeXEditorView: NSViewRepresentable {
         context.coordinator.applySettings(to: textView, force: true)
         context.coordinator.updateGutterWidth(for: textView)
         context.coordinator.highlight(textView, force: true)
+        SyncTeXBridge.shared.editorTextView = textView
         return scrollView
     }
 
@@ -87,6 +88,7 @@ struct LaTeXEditorView: NSViewRepresentable {
             scrollView.hasVerticalRuler = true
             scrollView.rulersVisible = true
         }
+        SyncTeXBridge.shared.editorTextView = textView
 
         let settingsChanged = context.coordinator.settings != settings
         let syntaxModeChanged = context.coordinator.syntaxMode != syntaxMode

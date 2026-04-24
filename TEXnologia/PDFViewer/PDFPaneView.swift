@@ -24,20 +24,48 @@ struct PDFKitRepresentable: NSViewRepresentable {
         view.autoScales = true
         view.displayMode = .singlePageContinuous
         view.backgroundColor = .windowBackgroundColor
+        SyncTeXBridge.shared.pdfView = view
+        context.coordinator.registerNavigationObserver(for: view)
         return view
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
         context.coordinator.load(documentURL, into: pdfView)
+        SyncTeXBridge.shared.pdfView = pdfView
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject {
         private var lastURL: URL?
         private var loadID = UUID()
+        private var navigationObserver: NSObjectProtocol?
+
+        deinit {
+            if let navigationObserver {
+                NotificationCenter.default.removeObserver(navigationObserver)
+            }
+        }
+
+        func registerNavigationObserver(for pdfView: PDFView) {
+            guard navigationObserver == nil else { return }
+            navigationObserver = NotificationCenter.default.addObserver(
+                forName: .pdfNavigateTo,
+                object: nil,
+                queue: .main
+            ) { [weak pdfView] notification in
+                guard let pdfView,
+                      let target = notification.object as? PDFNavigationTarget,
+                      let document = pdfView.document,
+                      let page = document.page(at: max(0, target.page - 1)) else { return }
+                let bounds = page.bounds(for: .mediaBox)
+                let pointY = bounds.height - CGFloat(target.y)
+                let destination = PDFDestination(page: page, at: NSPoint(x: CGFloat(target.x), y: pointY))
+                pdfView.go(to: destination)
+            }
+        }
 
         func load(_ documentURL: URL?, into pdfView: PDFView) {
             guard lastURL != documentURL else { return }

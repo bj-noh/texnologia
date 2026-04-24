@@ -123,14 +123,35 @@ final class ChatSession: ObservableObject {
     private func makeSystemPrompt() -> String {
         let projectPath = appModel.workspace?.rootURL.path ?? "(no project loaded)"
         let currentFile = appModel.editorFileURL?.path ?? "(no open editor file)"
-        return """
+        var prompt = """
         You are TEXnologia's in-editor AI assistant for LaTeX authors.
         The user is working on a project located at: \(projectPath)
         The currently focused editor file is: \(currentFile)
         You can read, list, and write files within the project using the provided tools.
-        Prefer concise responses. Only modify files the user asks about.
-        Never write files outside the project root.
+
+        DEFAULT EDIT SCOPE: Unless the user explicitly names another file or asks for a cross-file change, all edits MUST target the currently focused editor file via apply-to-open-editor. Do not write, rename, or delete other files in the project by default. If the user's request is ambiguous, ask before touching a different file.
+
+        Prefer concise responses. Never write files outside the project root.
         When producing LaTeX edits, output valid LaTeX.
         """
+        if let projectInstructions = loadProjectInstructions() {
+            prompt += "\n\nPROJECT INSTRUCTIONS (from TEXNOLOGIA.md, overrides defaults where they conflict):\n\(projectInstructions)"
+        }
+        return prompt
+    }
+
+    private func loadProjectInstructions() -> String? {
+        guard let root = appModel.workspace?.rootURL else { return nil }
+        let candidates = [
+            root.appendingPathComponent("TEXNOLOGIA.md"),
+            root.appendingPathComponent(".texnologia").appendingPathComponent("agent.md")
+        ]
+        for url in candidates {
+            if let data = try? String(contentsOf: url, encoding: .utf8) {
+                let trimmed = data.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        return nil
     }
 }

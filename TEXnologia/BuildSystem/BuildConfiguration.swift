@@ -56,7 +56,7 @@ struct BuildConfiguration: Codable, Sendable, Equatable {
             toolchainYear: toolchainYear,
             shellEscape: shellEscape,
             synctexEnabled: true,
-            maxDirectPasses: 3
+            maxDirectPasses: 4
         )
     }
 }

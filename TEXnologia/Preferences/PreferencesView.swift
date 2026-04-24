@@ -125,9 +125,11 @@ struct PreferencesView: View {
             TextField("Model", text: $settings.llm.model)
                 .textFieldStyle(.roundedBorder)
 
-            SecureField("API Key", text: $settings.llm.apiKey)
-                .textFieldStyle(.roundedBorder)
-                .disabled(!settings.llm.provider.requiresAPIKey)
+            LabeledContent("API Key") {
+                APIKeyField(text: $settings.llm.apiKey,
+                            enabled: settings.llm.provider.requiresAPIKey)
+                    .frame(minHeight: 22)
+            }
 
             HStack {
                 Stepper(value: $settings.llm.maxTokens, in: 256...8192, step: 256) {
@@ -168,5 +170,64 @@ struct PreferencesView: View {
         let available = Set(NSFontManager.shared.availableFontFamilies)
         let installedPreferred = preferred.filter { available.contains($0) }
         return installedPreferred.isEmpty ? ["Menlo"] : installedPreferred
+    }
+}
+
+private struct APIKeyField: NSViewRepresentable {
+    @Binding var text: String
+    var enabled: Bool
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = FocusingTextField()
+        field.isBezeled = true
+        field.bezelStyle = .roundedBezel
+        field.focusRingType = .default
+        field.placeholderString = "sk-..."
+        field.stringValue = text
+        field.isEditable = true
+        field.isSelectable = true
+        field.delegate = context.coordinator
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        field.cell?.usesSingleLineMode = true
+        field.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        return field
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        context.coordinator.parent = self
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+        nsView.isEnabled = enabled
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: APIKeyField
+        init(_ parent: APIKeyField) { self.parent = parent }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            parent.text = field.stringValue
+        }
+    }
+
+    final class FocusingTextField: NSTextField {
+        override var acceptsFirstResponder: Bool { isEnabled }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            if let window {
+                if !window.isKeyWindow {
+                    window.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                window.makeFirstResponder(self)
+            }
+            super.mouseDown(with: event)
+        }
     }
 }

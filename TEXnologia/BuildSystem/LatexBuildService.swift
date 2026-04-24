@@ -89,7 +89,7 @@ actor LatexBuildService {
     ) async throws -> ProcessExecutionResult {
         var accumulatedOutput = ""
         var lastResult = ProcessExecutionResult(exitCode: 1, output: "")
-        var didRunBibTeX = false
+        var didRunBibliographyPass = false
 
         for pass in 1...max(1, configuration.maxDirectPasses) {
             let result = try await ProcessRunner().run(
@@ -108,31 +108,53 @@ actor LatexBuildService {
             }
 
             let transcript = result.output + "\n" + readTranscript(configuration)
-            if !didRunBibTeX, shouldRunBibTeX(configuration, transcript: transcript) {
-                didRunBibTeX = true
-                if let bibTeX = toolchain.bibTeX {
-                    let bibResult = try await ProcessRunner().run(
-                        executable: bibTeX,
-                        arguments: [configuration.rootFile.deletingPathExtension().lastPathComponent],
-                        workingDirectory: configuration.outputDirectory,
-                        environment: bibTeXEnvironment(configuration, toolchain: toolchain)
-                    )
-                    accumulatedOutput += "\n--- BibTeX ---\n"
-                    accumulatedOutput += bibResult.output
-                    lastResult = ProcessExecutionResult(
-                        exitCode: bibResult.exitCode,
-                        output: accumulatedOutput
-                    )
+            if !didRunBibliographyPass {
+                let baseName = configuration.rootFile.deletingPathExtension().lastPathComponent
+                let bcfURL = configuration.outputDirectory.appendingPathComponent(baseName).appendingPathExtension("bcf")
+                let biberNeeded = FileManager.default.fileExists(atPath: bcfURL.path)
 
-                    if bibResult.exitCode != 0 {
+                if biberNeeded {
+                    didRunBibliographyPass = true
+                    if let biber = toolchain.biber {
+                        let biberResult = try await ProcessRunner().run(
+                            executable: biber,
+                            arguments: [baseName],
+                            workingDirectory: configuration.outputDirectory,
+                            environment: bibTeXEnvironment(configuration, toolchain: toolchain)
+                        )
+                        accumulatedOutput += "\n--- Biber ---\n"
+                        accumulatedOutput += biberResult.output
+                        lastResult = ProcessExecutionResult(exitCode: biberResult.exitCode, output: accumulatedOutput)
+                        if biberResult.exitCode != 0 {
+                            break
+                        }
+                        continue
+                    } else {
+                        accumulatedOutput += "\n--- Biber ---\nbiblatex/biber was required (.bcf file present) but no biber executable was found. Install TeX Live's biber or run latexmk manually.\n"
+                        lastResult = ProcessExecutionResult(exitCode: 1, output: accumulatedOutput)
                         break
                     }
-
-                    continue
-                } else {
-                    accumulatedOutput += "\n--- BibTeX ---\nBibTeX was required but no bibtex executable was found.\n"
-                    lastResult = ProcessExecutionResult(exitCode: 1, output: accumulatedOutput)
-                    break
+                } else if shouldRunBibTeX(configuration, transcript: transcript) {
+                    didRunBibliographyPass = true
+                    if let bibTeX = toolchain.bibTeX {
+                        let bibResult = try await ProcessRunner().run(
+                            executable: bibTeX,
+                            arguments: [baseName],
+                            workingDirectory: configuration.outputDirectory,
+                            environment: bibTeXEnvironment(configuration, toolchain: toolchain)
+                        )
+                        accumulatedOutput += "\n--- BibTeX ---\n"
+                        accumulatedOutput += bibResult.output
+                        lastResult = ProcessExecutionResult(exitCode: bibResult.exitCode, output: accumulatedOutput)
+                        if bibResult.exitCode != 0 {
+                            break
+                        }
+                        continue
+                    } else {
+                        accumulatedOutput += "\n--- BibTeX ---\nBibTeX was required but no bibtex executable was found.\n"
+                        lastResult = ProcessExecutionResult(exitCode: 1, output: accumulatedOutput)
+                        break
+                    }
                 }
             }
 
@@ -163,11 +185,13 @@ actor LatexBuildService {
         guard FileManager.default.fileExists(atPath: auxURL.path) else { return false }
 
         let aux = (try? String(contentsOf: auxURL, encoding: .utf8)) ?? ""
-        let bblURL = configuration.outputDirectory.appendingPathComponent(baseName).appendingPathExtension("bbl")
-        let hasBibliographyData = aux.contains("\\bibdata") || transcript.localizedCaseInsensitiveContains("No file \(baseName).bbl")
-        let unresolvedCitations = transcript.localizedCaseInsensitiveContains("Citation") && transcript.localizedCaseInsensitiveContains("undefined")
-
-        return hasBibliographyData && (!FileManager.default.fileExists(atPath: bblURL.path) || unresolvedCitations)
+        // Heuristics: any of these indicates bibtex should run.
+        if aux.contains("\\bibdata") || aux.contains("\\bibstyle") { return true }
+        if aux.contains("\\citation") && !aux.contains("\\citation{*}") { return true }
+        if transcript.localizedCaseInsensitiveContains("No file \(baseName).bbl") { return true }
+        if transcript.localizedCaseInsensitiveContains("Citation") &&
+            transcript.localizedCaseInsensitiveContains("undefined") { return true }
+        return false
     }
 
     private func bibTeXEnvironment(_ configuration: BuildConfiguration, toolchain: Toolchain) -> [String: String] {
@@ -301,6 +325,8 @@ struct Toolchain: Sendable {
     var xeLaTeX: URL?
     var luaLaTeX: URL?
     var bibTeX: URL?
+    var biber: URL?
+    var synctex: URL?
     var searchedDirectories: [URL]
 
     var environment: [String: String] {
@@ -328,6 +354,8 @@ struct ToolchainResolver: Sendable {
             xeLaTeX: find("xelatex", in: directories),
             luaLaTeX: find("lualatex", in: directories),
             bibTeX: find("bibtex", in: directories),
+            biber: find("biber", in: directories),
+            synctex: find("synctex", in: directories),
             searchedDirectories: directories
         )
     }
