@@ -15,7 +15,8 @@ struct ProjectSidebarView: View {
 
     @State private var tree: [ExplorerNode] = []
     @State private var expanded: Set<URL> = []
-    @State private var renameRequest: RenameRequest?
+    @State private var renamingURL: URL?
+    @State private var renameDraft = ""
     @State private var deleteTarget: URL?
     @State private var dropTarget: URL?
 
@@ -40,8 +41,12 @@ struct ProjectSidebarView: View {
                                 selectedFileURL: $selectedFileURL,
                                 expanded: $expanded,
                                 dropTarget: $dropTarget,
+                                renamingURL: $renamingURL,
+                                renameDraft: $renameDraft,
                                 select: select,
                                 rename: beginRename,
+                                commitRename: commitRename,
+                                cancelRename: cancelRename,
                                 delete: { deleteTarget = $0 },
                                 reveal: revealInFinder,
                                 createFile: createTexFile,
@@ -79,28 +84,31 @@ struct ProjectSidebarView: View {
             .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
+        .background(
+            ExplorerKeyboardMonitor(
+                selectedFileURL: $selectedFileURL,
+                beginRename: { url in beginRename(url) },
+                requestDelete: { url in deleteTarget = url }
+            )
+            .frame(width: 0, height: 0)
+        )
         .background(.thinMaterial)
         .clipShape(Rectangle())
         .onAppear(perform: reloadTree)
         .onChange(of: rootURL) { _, _ in reloadTree() }
         .onChange(of: index.texFiles) { _, _ in reloadTree() }
-        .sheet(item: $renameRequest) { request in
-            RenameSheet(request: request) { newName in
-                rename(request.url, to: newName)
-            }
-        }
-        .alert("Move to Trash?", isPresented: deleteConfirmationBinding) {
+        .alert("Delete File?", isPresented: deleteConfirmationBinding) {
             Button("Cancel", role: .cancel) {
                 deleteTarget = nil
             }
-            Button("Move to Trash", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 if let deleteTarget {
-                    moveToTrash(deleteTarget)
+                    deletePermanently(deleteTarget)
                 }
                 deleteTarget = nil
             }
         } message: {
-            Text(deleteTarget.map { "This will move '\($0.lastPathComponent)' to the macOS Trash and update the project explorer." } ?? "")
+            Text(deleteTarget.map { "This will permanently delete '\($0.lastPathComponent)' from disk and update the project explorer." } ?? "")
         }
     }
 
@@ -191,7 +199,20 @@ struct ProjectSidebarView: View {
     }
 
     private func beginRename(_ url: URL) {
-        renameRequest = RenameRequest(url: url, initialName: url.lastPathComponent)
+        renamingURL = url
+        renameDraft = url.inlineRenameStem
+    }
+
+    private func commitRename(_ url: URL) {
+        let proposedName = url.recombinedName(fromInlineRenameStem: renameDraft)
+        renamingURL = nil
+        renameDraft = ""
+        rename(url, to: proposedName)
+    }
+
+    private func cancelRename() {
+        renamingURL = nil
+        renameDraft = ""
     }
 
     private func rename(_ url: URL, to proposedName: String) {
@@ -219,16 +240,15 @@ struct ProjectSidebarView: View {
         }
     }
 
-    private func moveToTrash(_ url: URL) {
+    private func deletePermanently(_ url: URL) {
         do {
-            var trashedURL: NSURL?
-            try FileManager.default.trashItem(at: url, resultingItemURL: &trashedURL)
+            try FileManager.default.removeItem(at: url)
             if selectedFileURL == url || selectedFileURL?.path.hasPrefix(url.path + "/") == true {
                 selectedFileURL = nil
             }
             reloadTree()
             onRefreshProject(nil, selectedFileURL)
-            onStatus("Moved \(url.lastPathComponent) to Trash.")
+            onStatus("Deleted \(url.lastPathComponent).")
         } catch {
             onStatus("Delete failed: \(error.localizedDescription)")
         }
@@ -387,6 +407,8 @@ struct ProjectSessionsSidebarView: View {
     @State private var trees: [WorkspaceID: [ExplorerNode]] = [:]
     @State private var expanded: Set<URL> = []
     @State private var dropTarget: URL?
+    @State private var renamingURL: URL?
+    @State private var renameDraft = ""
 
     var body: some View {
         List(selection: $selectedFileURL) {
@@ -422,11 +444,15 @@ struct ProjectSessionsSidebarView: View {
             selectedFileURL: $selectedFileURL,
             expanded: $expanded,
             dropTarget: $dropTarget,
+            renamingURL: $renamingURL,
+            renameDraft: $renameDraft,
             select: { url in
                 onActivateSession(session.id)
                 onSelectFile(url)
             },
             rename: { _ in onStatus("Use the active project explorer to rename files.") },
+            commitRename: { _ in onStatus("Use the active project explorer to rename files.") },
+            cancelRename: {},
             delete: { _ in onStatus("Use the active project explorer to delete files.") },
             reveal: revealInFinder,
             createFile: { _ in onStatus("Use the active project explorer to create files.") },
@@ -495,8 +521,12 @@ private struct ExplorerNodeRow: View {
     @Binding var selectedFileURL: URL?
     @Binding var expanded: Set<URL>
     @Binding var dropTarget: URL?
+    @Binding var renamingURL: URL?
+    @Binding var renameDraft: String
     var select: (URL) -> Void
     var rename: (URL) -> Void
+    var commitRename: (URL) -> Void
+    var cancelRename: () -> Void
     var delete: (URL) -> Void
     var reveal: (URL) -> Void
     var createFile: (URL) -> Void
@@ -514,8 +544,12 @@ private struct ExplorerNodeRow: View {
                         selectedFileURL: $selectedFileURL,
                         expanded: $expanded,
                         dropTarget: $dropTarget,
+                        renamingURL: $renamingURL,
+                        renameDraft: $renameDraft,
                         select: select,
                         rename: rename,
+                        commitRename: commitRename,
+                        cancelRename: cancelRename,
                         delete: delete,
                         reveal: reveal,
                         createFile: createFile,
@@ -553,8 +587,25 @@ private struct ExplorerNodeRow: View {
             Image(systemName: node.iconName)
                 .foregroundStyle(node.isDirectory ? .blue : .secondary)
                 .frame(width: 16)
-            Text(node.url.lastPathComponent)
-                .lineLimit(1)
+
+            if renamingURL == node.url {
+                InlineRenameTextField(
+                    text: $renameDraft,
+                    commit: { commitRename(node.url) },
+                    cancel: cancelRename
+                )
+                .frame(minWidth: 72, maxWidth: .infinity)
+
+                if !node.url.inlineRenameExtensionSuffix.isEmpty {
+                    Text(node.url.inlineRenameExtensionSuffix)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            } else {
+                Text(node.url.lastPathComponent)
+                    .lineLimit(1)
+            }
+
             if node.url == mainFileURL {
                 Image(systemName: "star.fill")
                     .font(.caption)
@@ -587,7 +638,7 @@ private struct ExplorerNodeRow: View {
         Button("Rename") { rename(node.url) }
         Button("Reveal in Finder") { reveal(node.url) }
         Divider()
-        Button("Move to Trash", role: .destructive) { delete(node.url) }
+        Button("Delete", role: .destructive) { delete(node.url) }
     }
 
     private var expandedBinding: Binding<Bool> {
@@ -611,6 +662,146 @@ private struct ExplorerNodeRow: View {
     }
 }
 
+private struct InlineRenameTextField: NSViewRepresentable {
+    @Binding var text: String
+    var commit: () -> Void
+    var cancel: () -> Void
+
+    func makeNSView(context: Context) -> RenameNSTextField {
+        let textField = RenameNSTextField()
+        textField.isBordered = true
+        textField.isBezeled = true
+        textField.drawsBackground = true
+        textField.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        textField.stringValue = text
+        textField.onCommit = commit
+        textField.onCancel = cancel
+        textField.delegate = context.coordinator
+
+        DispatchQueue.main.async {
+            textField.window?.makeFirstResponder(textField)
+            textField.currentEditor()?.selectAll(nil)
+        }
+
+        return textField
+    }
+
+    func updateNSView(_ textField: RenameNSTextField, context: Context) {
+        textField.onCommit = commit
+        textField.onCancel = cancel
+        textField.delegate = context.coordinator
+        if textField.stringValue != text {
+            textField.stringValue = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        @Binding var text: String
+
+        init(text: Binding<String>) {
+            self._text = text
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let textField = notification.object as? NSTextField else { return }
+            text = textField.stringValue
+        }
+    }
+
+    final class RenameNSTextField: NSTextField {
+        var onCommit: (() -> Void)?
+        var onCancel: (() -> Void)?
+
+        override func keyDown(with event: NSEvent) {
+            switch event.keyCode {
+            case 36, 76:
+                onCommit?()
+            case 53:
+                onCancel?()
+            default:
+                super.keyDown(with: event)
+            }
+        }
+    }
+}
+
+private struct ExplorerKeyboardMonitor: NSViewRepresentable {
+    @Binding var selectedFileURL: URL?
+    var beginRename: (URL) -> Void
+    var requestDelete: (URL) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.install()
+        return NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.selectedFileURL = selectedFileURL
+        context.coordinator.beginRename = beginRename
+        context.coordinator.requestDelete = requestDelete
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.uninstall()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            selectedFileURL: selectedFileURL,
+            beginRename: beginRename,
+            requestDelete: requestDelete
+        )
+    }
+
+    final class Coordinator {
+        var selectedFileURL: URL?
+        var beginRename: (URL) -> Void
+        var requestDelete: (URL) -> Void
+        private var monitor: Any?
+
+        init(selectedFileURL: URL?, beginRename: @escaping (URL) -> Void, requestDelete: @escaping (URL) -> Void) {
+            self.selectedFileURL = selectedFileURL
+            self.beginRename = beginRename
+            self.requestDelete = requestDelete
+        }
+
+        func install() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, let selectedFileURL else { return event }
+                guard !Self.isTextInputActive else { return event }
+
+                switch event.keyCode {
+                case 36, 76:
+                    beginRename(selectedFileURL)
+                    return nil
+                case 51, 117:
+                    requestDelete(selectedFileURL)
+                    return nil
+                default:
+                    return event
+                }
+            }
+        }
+
+        func uninstall() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            monitor = nil
+        }
+
+        private static var isTextInputActive: Bool {
+            guard let responder = NSApp.keyWindow?.firstResponder else { return false }
+            return responder is NSTextView || responder is NSTextField
+        }
+    }
+}
+
 private struct FileTreeHeader: View {
     var rootURL: URL
 
@@ -626,49 +817,6 @@ private struct FileTreeHeader: View {
         }
         .padding(.vertical, 2)
     }
-}
-
-private struct RenameSheet: View {
-    var request: RenameRequest
-    var onCommit: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String
-
-    init(request: RenameRequest, onCommit: @escaping (String) -> Void) {
-        self.request = request
-        self.onCommit = onCommit
-        self._name = State(initialValue: request.initialName)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Rename")
-                .font(.headline)
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 320)
-
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    dismiss()
-                }
-                Button("Rename") {
-                    onCommit(name)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(20)
-    }
-}
-
-private struct RenameRequest: Identifiable {
-    var id: URL { url }
-    var url: URL
-    var initialName: String
 }
 
 private struct ExplorerNode: Identifiable, Hashable {
@@ -737,5 +885,26 @@ private struct ExplorerTreeBuilder {
 private extension URL {
     var isDirectory: Bool {
         (try? resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+    }
+
+    var inlineRenameStem: String {
+        guard !isDirectory, !pathExtension.isEmpty else {
+            return lastPathComponent
+        }
+        return deletingPathExtension().lastPathComponent
+    }
+
+    var inlineRenameExtensionSuffix: String {
+        guard !isDirectory, !pathExtension.isEmpty else {
+            return ""
+        }
+        return ".\(pathExtension)"
+    }
+
+    func recombinedName(fromInlineRenameStem stem: String) -> String {
+        guard !isDirectory, !pathExtension.isEmpty else {
+            return stem
+        }
+        return "\(stem).\(pathExtension)"
     }
 }

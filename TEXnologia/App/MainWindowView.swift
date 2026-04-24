@@ -49,50 +49,45 @@ struct MainWindowView: View {
     }
 
     private var workspaceLayout: some View {
-        HSplitView {
-            ProjectSidebarView(
-                index: appModel.projectIndex,
-                rootURL: appModel.workspace?.rootURL,
-                mainFileURL: appModel.workspace?.mainFileURL,
-                hidesIntermediateArtifacts: appModel.settings.hidesIntermediateArtifacts,
-                selectedFileURL: $appModel.selectedFileURL,
-                onSelectFile: appModel.selectFile,
-                onMakeMainFile: appModel.setMainFile,
-                onRefreshProject: appModel.refreshProject,
-                onStatus: appModel.setStatus
+        VStack(spacing: 0) {
+            SessionTabBar(
+                sessions: appModel.sessions,
+                activeWorkspaceID: appModel.workspace?.id,
+                activate: appModel.activateSession,
+                newSession: appModel.openProjectPanel
             )
-            .overlay(alignment: .top) {
-                if appModel.sessions.count > 1 {
-                    ProjectSessionsSidebarView(
-                        sessions: appModel.sessions,
-                        activeWorkspaceID: appModel.workspace?.id,
-                        hidesIntermediateArtifacts: appModel.settings.hidesIntermediateArtifacts,
-                        selectedFileURL: $appModel.selectedFileURL,
-                        onActivateSession: appModel.activateSession,
-                        onSelectFile: appModel.selectFile,
-                        onMakeMainFile: appModel.setMainFile,
-                        onStatus: appModel.setStatus
-                    )
-                }
+
+            HSplitView {
+                ProjectSidebarView(
+                    index: appModel.projectIndex,
+                    rootURL: appModel.workspace?.rootURL,
+                    mainFileURL: appModel.workspace?.mainFileURL,
+                    hidesIntermediateArtifacts: appModel.settings.hidesIntermediateArtifacts,
+                    selectedFileURL: $appModel.selectedFileURL,
+                    onSelectFile: appModel.selectFile,
+                    onMakeMainFile: appModel.setMainFile,
+                    onRefreshProject: appModel.refreshProject,
+                    onStatus: appModel.setStatus
+                )
+                .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
+
+                CenterPaneView(
+                    presentation: appModel.selectedFilePresentation,
+                    selectedFileURL: appModel.selectedFileURL,
+                    text: $appModel.editorText,
+                    settings: appModel.settings,
+                    jump: appModel.editorJump
+                )
+                .frame(minWidth: 420)
+
+                RightPreviewPane(
+                    focusedPane: $appModel.focusedPreviewPane,
+                    primaryPresentation: appModel.primaryPreviewPresentation,
+                    secondaryPresentation: appModel.secondaryPreviewPresentation,
+                    isSplit: $rightPaneSplit
+                )
+                    .frame(minWidth: 360)
             }
-            .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
-
-            CenterPaneView(
-                presentation: appModel.selectedFilePresentation,
-                selectedFileURL: appModel.selectedFileURL,
-                text: $appModel.editorText,
-                settings: appModel.settings,
-                jump: appModel.editorJump
-            )
-            .frame(minWidth: 420)
-
-            RightPreviewPane(
-                focusedPane: $appModel.focusedPreviewPane,
-                primaryPresentation: appModel.primaryPreviewPresentation,
-                secondaryPresentation: appModel.secondaryPreviewPresentation,
-                isSplit: $rightPaneSplit
-            )
-                .frame(minWidth: 360)
         }
     }
 
@@ -185,15 +180,25 @@ private struct CompileOptionsControl: View {
     var canCompile: Bool
     var compile: () -> Void
     var persistSettings: () -> Void
+    private let compileBlue = Color(red: 0.20, green: 0.36, blue: 0.58)
 
     var body: some View {
-        ControlGroup {
+        HStack(spacing: 0) {
             Button("Compile") {
                 compile()
             }
             .keyboardShortcut("b", modifiers: [.command])
             .disabled(!canCompile)
             .help(compileHelpText)
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(canCompile ? Color.white : Color.secondary)
+            .frame(width: 82, height: 24)
+            .background(canCompile ? compileBlue : Color.secondary.opacity(0.14))
+
+            Rectangle()
+                .fill(Color.white.opacity(canCompile ? 0.30 : 0.08))
+                .frame(width: 1, height: 16)
 
             Menu {
                 Text(currentSummary)
@@ -225,11 +230,17 @@ private struct CompileOptionsControl: View {
             } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 18)
+                    .foregroundStyle(canCompile ? Color.white : Color.secondary)
+                    .frame(width: 26, height: 24)
+                    .background(canCompile ? compileBlue : Color.secondary.opacity(0.14))
             }
+            .menuStyle(.borderlessButton)
             .help("Compile Settings")
             .accessibilityLabel("Compile Settings")
         }
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .frame(width: 109)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var currentSummary: String {
@@ -248,6 +259,52 @@ private struct CompileOptionsControl: View {
                 Image(systemName: "checkmark")
             }
         }
+    }
+}
+
+private struct SessionTabBar: View {
+    var sessions: [WorkspaceSession]
+    var activeWorkspaceID: WorkspaceID?
+    var activate: (WorkspaceID) -> Void
+    var newSession: () -> Void
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                ForEach(sessions) { session in
+                    Button {
+                        activate(session.id)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: session.id == activeWorkspaceID ? "shippingbox.fill" : "shippingbox")
+                                .font(.caption)
+                            Text(session.workspace.displayName)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 26)
+                        .background(session.id == activeWorkspaceID ? Color.accentColor.opacity(0.18) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help(session.workspace.rootURL.path)
+                }
+
+                Button {
+                    newSession()
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .help("New Session")
+                .accessibilityLabel("New Session")
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+        }
+        .scrollIndicators(.never)
+        .background(.bar)
     }
 }
 

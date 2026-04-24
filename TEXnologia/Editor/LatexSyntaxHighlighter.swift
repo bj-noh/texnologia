@@ -122,13 +122,9 @@ final class LatexSyntaxHighlighter {
         if text.count <= maxHighlightedCharacters {
             switch syntaxMode {
             case .latex:
-                for token in tokenizer.tokenize(text) {
-                    textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
-                }
+                applyLatexTokens(tokenizer.tokenize(text), to: textStorage, palette: palette)
             case .bibtex:
-                for token in bibTokenizer.tokenize(text) {
-                    textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
-                }
+                applyBibTokens(bibTokenizer.tokenize(text), to: textStorage, palette: palette)
             case .plain:
                 break
             }
@@ -140,6 +136,48 @@ final class LatexSyntaxHighlighter {
 
 
         textStorage.endEditing()
+    }
+
+    private func applyLatexTokens(_ tokens: [LatexToken], to textStorage: NSTextStorage, palette: EditorPalette) {
+        let commentRanges = tokens
+            .filter { $0.kind == .comment }
+            .map(\.range)
+
+        for token in tokens where token.kind != .comment && !overlapsCommentRange(token.range, commentRanges) {
+            textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
+        }
+
+        applyCommentTokensLast(tokens, to: textStorage, palette: palette)
+    }
+
+    private func applyBibTokens(_ tokens: [BibToken], to textStorage: NSTextStorage, palette: EditorPalette) {
+        let commentRanges = tokens
+            .filter { $0.kind == .comment }
+            .map(\.range)
+
+        for token in tokens where token.kind != .comment && !overlapsCommentRange(token.range, commentRanges) {
+            textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
+        }
+
+        applyCommentTokensLast(tokens, to: textStorage, palette: palette)
+    }
+
+    private func applyCommentTokensLast(_ tokens: [LatexToken], to textStorage: NSTextStorage, palette: EditorPalette) {
+        for token in tokens where token.kind == .comment {
+            textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
+        }
+    }
+
+    private func applyCommentTokensLast(_ tokens: [BibToken], to textStorage: NSTextStorage, palette: EditorPalette) {
+        for token in tokens where token.kind == .comment {
+            textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
+        }
+    }
+
+    private func overlapsCommentRange(_ range: NSRange, _ commentRanges: [NSRange]) -> Bool {
+        commentRanges.contains { commentRange in
+            NSIntersectionRange(range, commentRange).length > 0
+        }
     }
 
     private func attributes(for kind: LatexToken.Kind, palette: EditorPalette) -> [NSAttributedString.Key: Any] {
@@ -332,7 +370,7 @@ extension EditorTheme {
                 background: .textBackgroundColor,
                 foreground: .labelColor,
                 command: .systemBlue,
-                comment: .systemGreen,
+                comment: NSColor(red: 0.00, green: 0.42, blue: 0.18, alpha: 1),
                 brace: .secondaryLabelColor,
                 math: .systemOrange,
                 bibEntryType: .systemPurple,
@@ -347,7 +385,7 @@ extension EditorTheme {
                 background: NSColor(red: 0.98, green: 0.97, blue: 0.94, alpha: 1),
                 foreground: NSColor(red: 0.13, green: 0.12, blue: 0.10, alpha: 1),
                 command: NSColor(red: 0.10, green: 0.32, blue: 0.66, alpha: 1),
-                comment: NSColor(red: 0.34, green: 0.45, blue: 0.24, alpha: 1),
+                comment: NSColor(red: 0.24, green: 0.36, blue: 0.16, alpha: 1),
                 brace: NSColor(red: 0.42, green: 0.38, blue: 0.31, alpha: 1),
                 math: NSColor(red: 0.66, green: 0.29, blue: 0.12, alpha: 1),
                 bibEntryType: NSColor(red: 0.43, green: 0.18, blue: 0.58, alpha: 1),
@@ -362,7 +400,7 @@ extension EditorTheme {
                 background: NSColor(red: 0.13, green: 0.15, blue: 0.18, alpha: 1),
                 foreground: NSColor(red: 0.86, green: 0.87, blue: 0.84, alpha: 1),
                 command: NSColor(red: 0.51, green: 0.70, blue: 0.96, alpha: 1),
-                comment: NSColor(red: 0.55, green: 0.70, blue: 0.45, alpha: 1),
+                comment: NSColor(red: 0.38, green: 0.55, blue: 0.32, alpha: 1),
                 brace: NSColor(red: 0.68, green: 0.70, blue: 0.72, alpha: 1),
                 math: NSColor(red: 0.95, green: 0.66, blue: 0.35, alpha: 1),
                 bibEntryType: NSColor(red: 0.78, green: 0.62, blue: 0.95, alpha: 1),
@@ -377,7 +415,7 @@ extension EditorTheme {
                 background: NSColor(red: 0.05, green: 0.06, blue: 0.08, alpha: 1),
                 foreground: NSColor(red: 0.88, green: 0.90, blue: 0.92, alpha: 1),
                 command: NSColor(red: 0.42, green: 0.68, blue: 1.00, alpha: 1),
-                comment: NSColor(red: 0.40, green: 0.72, blue: 0.52, alpha: 1),
+                comment: NSColor(red: 0.30, green: 0.58, blue: 0.40, alpha: 1),
                 brace: NSColor(red: 0.70, green: 0.74, blue: 0.78, alpha: 1),
                 math: NSColor(red: 1.00, green: 0.72, blue: 0.36, alpha: 1),
                 bibEntryType: NSColor(red: 0.82, green: 0.60, blue: 1.00, alpha: 1),

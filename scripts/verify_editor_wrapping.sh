@@ -7,6 +7,8 @@ HIGHLIGHTER_FILE="$ROOT_DIR/TEXnologia/Editor/LatexSyntaxHighlighter.swift"
 
 required_editor_patterns=(
   "WrappingTextView"
+  "LineNumberRulerView"
+  "hasVerticalRuler = true"
   "hasHorizontalScroller = false"
   "isHorizontallyResizable = false"
   "widthTracksTextView = true"

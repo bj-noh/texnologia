@@ -38,8 +38,13 @@ struct LaTeXEditorView: NSViewRepresentable {
         textView.delegate = context.coordinator
 
         scrollView.documentView = textView
+        let lineNumberView = LineNumberRulerView(textView: textView)
+        scrollView.verticalRulerView = lineNumberView
+        scrollView.hasVerticalRuler = true
+        scrollView.rulersVisible = true
         textView.updateWrappingContainerWidth()
         context.coordinator.textView = textView
+        context.coordinator.lineNumberView = lineNumberView
         context.coordinator.settings = settings
         context.coordinator.syntaxMode = syntaxMode
         context.coordinator.applySettings(to: textView, force: true)
@@ -72,6 +77,7 @@ struct LaTeXEditorView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding private var text: String
         weak var textView: NSTextView?
+        fileprivate weak var lineNumberView: LineNumberRulerView?
         var settings: AppSettings
         var syntaxMode: EditorSyntaxMode
         private let highlighter = LatexSyntaxHighlighter()
@@ -89,6 +95,7 @@ struct LaTeXEditorView: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             text = textView.string
             highlight(textView, force: false)
+            lineNumberView?.needsDisplay = true
         }
 
         func replaceText(_ newText: String, in textView: NSTextView) {
@@ -97,11 +104,13 @@ struct LaTeXEditorView: NSViewRepresentable {
             textView.string = newText
             textView.setSelectedRange(selectedRange.clamped(to: textView.string.utf16.count))
             isProgrammaticChange = false
+            lineNumberView?.needsDisplay = true
         }
 
         func highlight(_ textView: NSTextView, force: Bool) {
             highlighter.apply(to: textView.textStorage, text: textView.string, settings: settings, syntaxMode: syntaxMode)
             clearLatexSpellingMarkers(in: textView)
+            lineNumberView?.needsDisplay = true
         }
 
         func textView(_ textView: NSTextView, shouldSetSpellingState value: Int, range affectedCharRange: NSRange) -> Int {
@@ -158,6 +167,7 @@ struct LaTeXEditorView: NSViewRepresentable {
             textView.setSelectedRange(range)
             textView.scrollRangeToVisible(range)
             textView.showFindIndicator(for: range)
+            lineNumberView?.needsDisplay = true
         }
 
         private func clearLatexSpellingMarkers(in textView: NSTextView) {
@@ -215,6 +225,70 @@ private final class WrappingTextView: NSTextView {
     }
 }
 
+fileprivate final class LineNumberRulerView: NSRulerView {
+    private weak var textView: NSTextView?
+    private let gutterWidth: CGFloat = 44
+
+    init(textView: NSTextView) {
+        self.textView = textView
+        super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
+        self.clientView = textView
+        self.ruleThickness = gutterWidth
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        guard
+            let textView,
+            let layoutManager = textView.layoutManager,
+            let textContainer = textView.textContainer,
+            let scrollView = textView.enclosingScrollView
+        else {
+            return
+        }
+
+        NSColor.textBackgroundColor.setFill()
+        bounds.fill()
+
+        let visibleRect = scrollView.contentView.bounds
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
+        guard glyphRange.location < layoutManager.numberOfGlyphs else { return }
+
+        let numberAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+
+        let nsString = textView.string as NSString
+        var glyphIndex = glyphRange.location
+        while glyphIndex < NSMaxRange(glyphRange) {
+            var lineGlyphRange = NSRange()
+            let lineRect = layoutManager.lineFragmentRect(
+                forGlyphAt: glyphIndex,
+                effectiveRange: &lineGlyphRange,
+                withoutAdditionalLayout: true
+            )
+            let characterIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+            let sourceLineRange = nsString.lineRange(for: NSRange(location: min(characterIndex, max(nsString.length - 1, 0)), length: 0))
+
+            if characterIndex == sourceLineRange.location || glyphIndex == glyphRange.location {
+                let lineNumber = nsString.lineNumber(at: characterIndex)
+                let label = "\(lineNumber)" as NSString
+                let labelSize = label.size(withAttributes: numberAttributes)
+                let y = textView.textContainerOrigin.y + lineRect.minY - visibleRect.minY + 1
+                let x = gutterWidth - labelSize.width - 8
+                label.draw(at: NSPoint(x: x, y: y), withAttributes: numberAttributes)
+            }
+
+            let nextGlyphIndex = NSMaxRange(lineGlyphRange)
+            glyphIndex = nextGlyphIndex > glyphIndex ? nextGlyphIndex : glyphIndex + 1
+        }
+    }
+}
+
 private extension NSRange {
     func clamped(to upperBound: Int) -> NSRange {
         NSRange(location: min(location, upperBound), length: min(length, max(0, upperBound - location)))
@@ -241,5 +315,26 @@ private extension NSTextView {
         let columnOffset = max(0, column - 1)
         let location = min(targetLineRange.location + columnOffset, targetLineRange.location + targetLineRange.length)
         return NSRange(location: min(location, nsString.length), length: 0)
+    }
+}
+
+private extension NSString {
+    func lineNumber(at characterIndex: Int) -> Int {
+        guard length > 0 else { return 1 }
+        let clampedIndex = min(max(characterIndex, 0), length)
+        var line = 1
+        var index = 0
+
+        while index < clampedIndex {
+            let range = lineRange(for: NSRange(location: index, length: 0))
+            let nextIndex = range.location + range.length
+            guard nextIndex > index else { break }
+            if nextIndex <= clampedIndex {
+                line += 1
+            }
+            index = nextIndex
+        }
+
+        return line
     }
 }
