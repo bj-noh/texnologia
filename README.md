@@ -1,4 +1,5 @@
-# TEXnologia
+# TEXnologia 
+<img src="TEXnologia/Resources/TEXnologiaIcon.svg" alt="TEXnologia icon" width="96" />
 
 TEXnologia is a macOS-native LaTeX writing IDE prototype focused on a fast research-writing loop:
 
@@ -6,9 +7,6 @@ open a project, edit `.tex`, build locally, jump to errors, and preview the PDF.
 
 The current implementation is a Swift Package app using SwiftUI, AppKit, `NSTextView`, and PDFKit. It assumes a local TeX distribution such as MacTeX or BasicTeX is already installed.
 
-<img src="TEXnologia/Resources/TEXnologiaIcon.svg" alt="TEXnologia icon" width="96" />
-
-## Screenshots
 
 ![TEXnologia welcome screen](assets/texnologia-fullscreen1.png)
 
