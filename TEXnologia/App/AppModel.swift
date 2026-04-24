@@ -178,6 +178,39 @@ final class AppModel: ObservableObject {
         statusMessage = "Activated \(session.workspace.displayName)."
     }
 
+    func closeSession(_ id: WorkspaceID) {
+        guard let closingIndex = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let closedSession = sessions.remove(at: closingIndex)
+
+        guard workspace?.id == id else {
+            statusMessage = "Closed \(closedSession.workspace.displayName) session."
+            return
+        }
+
+        if sessions.isEmpty {
+            workspace = nil
+            projectIndex = .empty
+            selectedFileURL = nil
+            editorText = ""
+            selectedFilePresentation = .none
+            buildIssues = []
+            pdfDocumentURL = nil
+            primaryPreviewPresentation = .none
+            secondaryPreviewPresentation = .none
+            statusMessage = "Closed \(closedSession.workspace.displayName) session."
+            return
+        }
+
+        let nextIndex = min(closingIndex, sessions.count - 1)
+        let nextSession = sessions[nextIndex]
+        workspace = nextSession.workspace
+        projectIndex = nextSession.index
+        selectedFileURL = nextSession.workspace.mainFileURL
+        selectedFilePresentation = selectedFileURL == nil ? .none : .text
+        loadSelectedFile()
+        statusMessage = "Closed \(closedSession.workspace.displayName) session."
+    }
+
     private func activateSession(containing url: URL) {
         guard let session = sessions.first(where: { url.path == $0.workspace.rootURL.path || url.path.hasPrefix($0.workspace.rootURL.path + "/") }) else { return }
         workspace = session.workspace

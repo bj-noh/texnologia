@@ -54,6 +54,7 @@ struct MainWindowView: View {
                 sessions: appModel.sessions,
                 activeWorkspaceID: appModel.workspace?.id,
                 activate: appModel.activateSession,
+                close: appModel.closeSession,
                 newSession: appModel.openProjectPanel
             )
 
@@ -302,6 +303,7 @@ private struct SessionTabBar: View {
     var sessions: [WorkspaceSession]
     var activeWorkspaceID: WorkspaceID?
     var activate: (WorkspaceID) -> Void
+    var close: (WorkspaceID) -> Void
     var newSession: () -> Void
 
     var body: some View {
@@ -324,6 +326,12 @@ private struct SessionTabBar: View {
                     }
                     .buttonStyle(.plain)
                     .help(session.workspace.rootURL.path)
+                    .contextMenu {
+                        Button("Close Session") {
+                            close(session.id)
+                        }
+                        .help("Only closes this app session. Files on disk are not changed.")
+                    }
                 }
 
                 Button {
