@@ -10,9 +10,11 @@ The current implementation is a Swift Package app using SwiftUI, AppKit, `NSText
 
 ## Screenshots
 
+![TEXnologia welcome screen](assets/texnologia-fullscreen1.png)
+
+
 ![TEXnologia with project explorer, editor, PDF preview, and AI pane](assets/texnologia-fullscreen2.png)
 
-![TEXnologia welcome screen](assets/texnologia-fullscreen1.png)
 
 ## Current Features
 
