@@ -8,9 +8,11 @@ The current implementation is a Swift Package app using SwiftUI, AppKit, `NSText
 
 <img src="TEXnologia/Resources/TEXnologiaIcon.svg" alt="TEXnologia icon" width="96" />
 
-## Screenshot
+## Screenshots
 
-![TEXnologia fullscreen welcome screen](assets/texnologia-fullscreen.png)
+![TEXnologia with project explorer, editor, PDF preview, and AI pane](assets/texnologia-fullscreen2.png)
+
+![TEXnologia welcome screen](assets/texnologia-fullscreen1.png)
 
 ## Current Features
 
