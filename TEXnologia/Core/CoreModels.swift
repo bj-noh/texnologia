@@ -75,6 +75,18 @@ struct HistoryEntry: Identifiable, Hashable {
     var reason: String
 }
 
+enum PreviewPaneID: String, Codable, Equatable {
+    case primary
+    case secondary
+
+    var displayName: String {
+        switch self {
+        case .primary: return "A"
+        case .secondary: return "B"
+        }
+    }
+}
+
 enum FilePresentation: Equatable {
     case none
     case text

@@ -83,8 +83,9 @@ struct MainWindowView: View {
             .frame(minWidth: 420)
 
             RightPreviewPane(
-                builtPDFURL: appModel.pdfDocumentURL,
-                previewPresentation: appModel.previewPresentation,
+                focusedPane: $appModel.focusedPreviewPane,
+                primaryPresentation: appModel.primaryPreviewPresentation,
+                secondaryPresentation: appModel.secondaryPreviewPresentation,
                 isSplit: rightPaneSplit
             )
                 .frame(minWidth: 360)
@@ -225,46 +226,63 @@ private struct CenterPaneView: View {
 }
 
 private struct RightPreviewPane: View {
-    var builtPDFURL: URL?
-    var previewPresentation: FilePresentation
+    @Binding var focusedPane: PreviewPaneID
+    var primaryPresentation: FilePresentation
+    var secondaryPresentation: FilePresentation
     var isSplit: Bool
 
     var body: some View {
         if isSplit {
             VSplitView {
-                PreviewPane(title: "Compiled PDF", presentation: builtPDFURL.map { .pdf($0) } ?? .none)
+                PreviewPane(
+                    paneID: .primary,
+                    title: "Preview A",
+                    presentation: primaryPresentation,
+                    focusedPane: $focusedPane
+                )
                     .frame(minHeight: 220)
-                PreviewPane(title: "Preview", presentation: previewPresentation)
+                PreviewPane(
+                    paneID: .secondary,
+                    title: "Preview B",
+                    presentation: secondaryPresentation,
+                    focusedPane: $focusedPane
+                )
                     .frame(minHeight: 180)
             }
         } else {
             PreviewPane(
-                title: "Preview",
-                presentation: preferredPresentation
+                paneID: focusedPane,
+                title: "Preview \(focusedPane.displayName)",
+                presentation: focusedPresentation,
+                focusedPane: $focusedPane
             )
         }
     }
 
-    private var preferredPresentation: FilePresentation {
-        switch previewPresentation {
-        case .image, .pdf:
-            return previewPresentation
-        default:
-            return builtPDFURL.map { .pdf($0) } ?? .none
-        }
+    private var focusedPresentation: FilePresentation {
+        focusedPane == .primary ? primaryPresentation : secondaryPresentation
     }
 }
 
 private struct PreviewPane: View {
+    var paneID: PreviewPaneID
     var title: String
     var presentation: FilePresentation
+    @Binding var focusedPane: PreviewPaneID
+
+    private var isFocused: Bool {
+        focusedPane == paneID
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
+                Circle()
+                    .fill(isFocused ? Color.orange : Color.secondary.opacity(0.35))
+                    .frame(width: 7, height: 7)
                 Text(title)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isFocused ? .primary : .secondary)
                 Spacer()
             }
             .padding(.horizontal, 10)
@@ -279,6 +297,15 @@ private struct PreviewPane: View {
             default:
                 PDFPaneView(documentURL: nil)
             }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            focusedPane = paneID
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 2)
+                .stroke(isFocused ? Color.orange : Color.clear, lineWidth: 1.25)
+                .padding(1)
         }
     }
 }

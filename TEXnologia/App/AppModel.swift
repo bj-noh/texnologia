@@ -13,7 +13,9 @@ final class AppModel: ObservableObject {
     @Published var projectIndex: ProjectIndex = .empty
     @Published var buildIssues: [BuildIssue] = []
     @Published var pdfDocumentURL: URL?
-    @Published var previewPresentation: FilePresentation = .none
+    @Published var focusedPreviewPane: PreviewPaneID = .primary
+    @Published var primaryPreviewPresentation: FilePresentation = .none
+    @Published var secondaryPreviewPresentation: FilePresentation = .none
     @Published var editorJump: EditorJump?
     @Published var settings: AppSettings = .default
     @Published var statusMessage: String = "Drop a LaTeX folder, .tex file, or .zip archive to begin."
@@ -125,14 +127,14 @@ final class AppModel: ObservableObject {
         guard selectedFileURL.isEditableTextFile else {
             let presentation = selectedFileURL.presentation
             if case .image = presentation {
-                previewPresentation = presentation
+                showInFocusedPreview(presentation)
                 statusMessage = "Previewing \(selectedFileURL.lastPathComponent)."
                 return
             }
 
             editorText = ""
             selectedFilePresentation = presentation
-            previewPresentation = presentation
+            showInFocusedPreview(presentation)
             if case .pdf(let url) = presentation {
                 pdfDocumentURL = url
                 statusMessage = "Opened \(url.lastPathComponent) in the PDF viewer."
@@ -294,10 +296,21 @@ final class AppModel: ObservableObject {
             let result = await buildService.build(configuration: configuration)
             buildIssues = result.issues
             pdfDocumentURL = result.pdfURL
-            previewPresentation = result.pdfURL.map { .pdf($0) } ?? previewPresentation
+            if let pdfURL = result.pdfURL {
+                showInFocusedPreview(.pdf(pdfURL))
+            }
             statusMessage = result.succeeded
                 ? "Compile succeeded."
                 : "Compile failed with \(result.issues.count) issue(s)."
+        }
+    }
+
+    private func showInFocusedPreview(_ presentation: FilePresentation) {
+        switch focusedPreviewPane {
+        case .primary:
+            primaryPreviewPresentation = presentation
+        case .secondary:
+            secondaryPreviewPresentation = presentation
         }
     }
 
