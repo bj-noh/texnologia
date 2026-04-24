@@ -69,7 +69,7 @@ require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ScrollVie
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "LazyVStack(alignment: .leading, spacing: 4)" "compact explorer row spacing"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerIconButtonStyle" "modern explorer icon buttons"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerStyle.sidebarBackground" "soft explorer sidebar background"
-require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerSectionHeader(title: \"구조\")" "styled outline section"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerSectionHeader(title: \"Outline\")" "styled outline section"
 require_pattern "TEXnologia/App/MainWindowView.swift" "outlineItems: appModel.currentEditorOutline" "outline follows currently open editor buffer"
 require_pattern "TEXnologia/App/AppModel.swift" "currentEditorOutline" "live editor outline model"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "var outlineItems: \\[OutlineItem\\]" "sidebar receives live outline only"

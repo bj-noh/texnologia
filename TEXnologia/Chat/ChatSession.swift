@@ -27,7 +27,7 @@ final class ChatSession: ObservableObject {
         let trimmed = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard isConfigured else {
-            lastError = "API 키를 먼저 설정하세요."
+            lastError = "Set an API key first."
             return
         }
 
@@ -39,13 +39,13 @@ final class ChatSession: ObservableObject {
         pendingTask?.cancel()
         pendingTask = nil
         isStreaming = false
-        statusMessage = "취소됨"
+        statusMessage = "Cancelled"
     }
 
     private func runAgenticLoop() {
         pendingTask?.cancel()
         isStreaming = true
-        statusMessage = "생각하는 중…"
+        statusMessage = "Thinking…"
         lastError = nil
 
         let config = appModel.settings.llm
@@ -75,7 +75,7 @@ final class ChatSession: ObservableObject {
                         return
                     }
 
-                    self.statusMessage = "도구 실행 중: \(toolCalls.map(\.name).joined(separator: ", "))"
+                    self.statusMessage = "Running tools: \(toolCalls.map(\.name).joined(separator: ", "))"
 
                     var resultBlocks: [ChatBlock] = []
                     for call in toolCalls {
@@ -92,9 +92,9 @@ final class ChatSession: ObservableObject {
                         )))
                     }
                     self.messages.append(ChatMessage(role: .user, blocks: resultBlocks))
-                    self.statusMessage = "응답 생성 중…"
+                    self.statusMessage = "Generating response…"
                 }
-                self.statusMessage = "도구 반복 제한에 도달했습니다."
+                self.statusMessage = "Reached the tool iteration limit."
                 self.isStreaming = false
             } catch is CancellationError {
                 self.isStreaming = false

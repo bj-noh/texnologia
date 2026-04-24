@@ -23,10 +23,10 @@ enum LLMError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey: return "API 키가 설정되지 않았습니다. 설정에서 키를 입력하세요."
-        case .invalidResponse(let s): return "응답을 해석할 수 없습니다: \(s)"
+        case .missingAPIKey: return "No API key is configured. Enter one in Preferences."
+        case .invalidResponse(let s): return "Could not parse response: \(s)"
         case .httpError(let code, let body): return "HTTP \(code): \(body)"
-        case .network(let e): return "네트워크 오류: \(e.localizedDescription)"
+        case .network(let e): return "Network error: \(e.localizedDescription)"
         }
     }
 }
@@ -191,6 +191,24 @@ final class OpenAICompatibleClient: LLMClient {
     }
 
     func send(messages: [ChatMessage], tools: [LLMToolDef], system: String?) async throws -> LLMResponse {
+        if useResponsesAPI {
+            return try await sendViaResponses(messages: messages, tools: tools, system: system)
+        }
+        return try await sendViaChatCompletions(messages: messages, tools: tools, system: system)
+    }
+
+    private var useResponsesAPI: Bool {
+        guard provider == .openai else { return false }
+        if model.contains("-pro") { return true }
+        if model.contains("-codex") { return true }
+        return false
+    }
+
+    private var responsesEndpoint: URL {
+        URL(string: "https://api.openai.com/v1/responses")!
+    }
+
+    private func sendViaChatCompletions(messages: [ChatMessage], tools: [LLMToolDef], system: String?) async throws -> LLMResponse {
         var openMessages: [[String: Any]] = []
         if let system { openMessages.append(["role": "system", "content": system]) }
 
@@ -252,21 +270,7 @@ final class OpenAICompatibleClient: LLMClient {
             }
         }
 
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        if provider.requiresAPIKey {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        }
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw LLMError.invalidResponse("no http response")
-        }
-        if http.statusCode >= 400 {
-            throw LLMError.httpError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
-        }
+        let data = try await postJSON(to: endpoint, body: body)
 
         guard
             let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -293,6 +297,124 @@ final class OpenAICompatibleClient: LLMClient {
 
         let stopReason = choice["finish_reason"] as? String
         return LLMResponse(blocks: blocks, stopReason: stopReason)
+    }
+
+    private func sendViaResponses(messages: [ChatMessage], tools: [LLMToolDef], system: String?) async throws -> LLMResponse {
+        var input: [[String: Any]] = []
+
+        for msg in messages {
+            switch msg.role {
+            case .user:
+                let toolResults = msg.blocks.compactMap { block -> ChatToolResult? in
+                    if case .toolResult(let r) = block { return r } else { return nil }
+                }
+                if !toolResults.isEmpty {
+                    for result in toolResults {
+                        input.append([
+                            "type": "function_call_output",
+                            "call_id": result.toolUseID,
+                            "output": result.content
+                        ])
+                    }
+                } else if !msg.textContent.isEmpty {
+                    input.append([
+                        "role": "user",
+                        "content": [["type": "input_text", "text": msg.textContent]]
+                    ])
+                }
+            case .assistant:
+                if !msg.textContent.isEmpty {
+                    input.append([
+                        "role": "assistant",
+                        "content": [["type": "output_text", "text": msg.textContent]]
+                    ])
+                }
+                for block in msg.blocks {
+                    if case .toolCall(let call) = block {
+                        input.append([
+                            "type": "function_call",
+                            "call_id": call.id,
+                            "name": call.name,
+                            "arguments": call.inputJSON
+                        ])
+                    }
+                }
+            case .system:
+                continue
+            }
+        }
+
+        var body: [String: Any] = [
+            "model": model,
+            "input": input,
+            "max_output_tokens": maxTokens
+        ]
+        if let system { body["instructions"] = system }
+        if !tools.isEmpty {
+            body["tools"] = tools.map { tool in
+                [
+                    "type": "function",
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.inputSchema
+                ] as [String: Any]
+            }
+        }
+
+        let data = try await postJSON(to: responsesEndpoint, body: body)
+
+        guard
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let output = root["output"] as? [[String: Any]]
+        else {
+            throw LLMError.invalidResponse(String(data: data, encoding: .utf8) ?? "")
+        }
+
+        var blocks: [LLMResponse.Block] = []
+        for item in output {
+            let type = item["type"] as? String ?? ""
+            switch type {
+            case "message":
+                if let content = item["content"] as? [[String: Any]] {
+                    for part in content {
+                        if part["type"] as? String == "output_text",
+                           let text = part["text"] as? String,
+                           !text.isEmpty {
+                            blocks.append(.text(text))
+                        }
+                    }
+                }
+            case "function_call":
+                let id = (item["call_id"] as? String) ?? (item["id"] as? String) ?? UUID().uuidString
+                let name = item["name"] as? String ?? ""
+                let args = item["arguments"] as? String ?? "{}"
+                blocks.append(.toolCall(id: id, name: name, inputJSON: args))
+            default:
+                continue
+            }
+        }
+
+        let stopReason = root["status"] as? String
+        return LLMResponse(blocks: blocks, stopReason: stopReason)
+    }
+
+    private func postJSON(to url: URL, body: [String: Any]) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        if provider.requiresAPIKey {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LLMError.invalidResponse("no http response")
+        }
+        if http.statusCode >= 400 {
+            throw LLMError.httpError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        }
+        return data
     }
 
     private var maxTokensFieldName: String {
