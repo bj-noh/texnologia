@@ -220,8 +220,7 @@ struct ProjectSidebarView: View {
         renameDraft = url.lastPathComponent
     }
 
-    private func commitRename(_ url: URL) {
-        let proposedName = renameDraft
+    private func commitRename(_ url: URL, proposedName: String) {
         renamingURL = nil
         renameDraft = ""
         rename(url, to: proposedName)
@@ -287,9 +286,9 @@ struct ProjectSidebarView: View {
         expanded.insert(directory)
     }
 
-    private func commitCreation() {
+    private func commitCreation(proposedName: String) {
         guard let pendingCreation else { return }
-        let trimmed = creationDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             cancelCreation()
             return
@@ -501,9 +500,9 @@ struct ProjectSessionsSidebarView: View {
                 onSelectFile(url)
             },
             rename: { _ in onStatus("Use the active project explorer to rename files.") },
-            commitRename: { _ in onStatus("Use the active project explorer to rename files.") },
+            commitRename: { _, _ in onStatus("Use the active project explorer to rename files.") },
             cancelRename: {},
-            commitCreation: { onStatus("Use the active project explorer to create files.") },
+            commitCreation: { _ in onStatus("Use the active project explorer to create files.") },
             cancelCreation: {},
             delete: { _ in onStatus("Use the active project explorer to delete files.") },
             reveal: revealInFinder,
@@ -579,9 +578,9 @@ private struct ExplorerNodeRow: View {
     @Binding var creationDraft: String
     var select: (URL) -> Void
     var rename: (URL) -> Void
-    var commitRename: (URL) -> Void
+    var commitRename: (URL, String) -> Void
     var cancelRename: () -> Void
-    var commitCreation: () -> Void
+    var commitCreation: (String) -> Void
     var cancelCreation: () -> Void
     var delete: (URL) -> Void
     var reveal: (URL) -> Void
@@ -661,7 +660,7 @@ private struct ExplorerNodeRow: View {
                 InlineRenameTextField(
                     text: $renameDraft,
                     initialSelectionRange: node.url.renameStemSelectionRange,
-                    commit: { commitRename(node.url) },
+                    commit: { proposedName in commitRename(node.url, proposedName) },
                     cancel: cancelRename
                 )
                 .frame(minWidth: 72, maxWidth: .infinity)
@@ -735,7 +734,7 @@ private struct PendingCreation: Identifiable, Hashable {
 private struct PendingCreationRow: View {
     @Binding var draft: String
     var isDirectory: Bool
-    var commit: () -> Void
+    var commit: (String) -> Void
     var cancel: () -> Void
 
     var body: some View {
@@ -761,7 +760,7 @@ private struct PendingCreationRow: View {
 private struct InlineRenameTextField: NSViewRepresentable {
     @Binding var text: String
     var initialSelectionRange: NSRange?
-    var commit: () -> Void
+    var commit: (String) -> Void
     var cancel: () -> Void
 
     func makeNSView(context: Context) -> RenameNSTextField {
@@ -774,6 +773,8 @@ private struct InlineRenameTextField: NSViewRepresentable {
         textField.onCommit = commit
         textField.onCancel = cancel
         textField.delegate = context.coordinator
+        context.coordinator.commit = commit
+        context.coordinator.cancel = cancel
 
         DispatchQueue.main.async {
             textField.window?.makeFirstResponder(textField)
@@ -791,6 +792,8 @@ private struct InlineRenameTextField: NSViewRepresentable {
         textField.onCommit = commit
         textField.onCancel = cancel
         textField.delegate = context.coordinator
+        context.coordinator.commit = commit
+        context.coordinator.cancel = cancel
         if textField.stringValue != text {
             textField.stringValue = text
         }
@@ -802,6 +805,8 @@ private struct InlineRenameTextField: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         @Binding var text: String
+        var commit: ((String) -> Void)?
+        var cancel: (() -> Void)?
 
         init(text: Binding<String>) {
             self._text = text
@@ -811,16 +816,31 @@ private struct InlineRenameTextField: NSViewRepresentable {
             guard let textField = notification.object as? NSTextField else { return }
             text = textField.stringValue
         }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            switch commandSelector {
+            case #selector(NSResponder.insertNewline(_:)),
+                 #selector(NSResponder.insertTab(_:)):
+                text = textView.string
+                commit?(textView.string)
+                return true
+            case #selector(NSResponder.cancelOperation(_:)):
+                cancel?()
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     final class RenameNSTextField: NSTextField {
-        var onCommit: (() -> Void)?
+        var onCommit: ((String) -> Void)?
         var onCancel: (() -> Void)?
 
         override func keyDown(with event: NSEvent) {
             switch event.keyCode {
             case 36, 76:
-                onCommit?()
+                onCommit?(stringValue)
             case 53:
                 onCancel?()
             default:
