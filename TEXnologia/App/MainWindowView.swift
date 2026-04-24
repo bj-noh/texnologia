@@ -363,35 +363,39 @@ private struct CenterPaneView: View {
     var jump: EditorJump?
 
     var body: some View {
-        switch presentation {
-        case .text:
-            LaTeXEditorView(
-                text: $text,
-                settings: settings,
-                syntaxMode: editorFileURL?.editorSyntaxMode ?? .plain,
-                jump: jump
-            )
-        case .readOnlyText(let preview):
-            ReadOnlyTextPreviewPane(preview: preview)
-        case .pdf(let url):
-            PDFPaneView(documentURL: url)
-        case .image(let url):
-            ImagePreviewPane(fileURL: url)
-        case .external(let url):
-            FilePlaceholderView(
-                icon: "doc",
-                title: url.lastPathComponent,
-                message: "This file type is not editable in TEXnologia yet.",
-                fileURL: url
-            )
-        case .none:
-            FilePlaceholderView(
-                icon: "text.cursor",
-                title: "No source file selected",
-                message: "Choose a .tex, .bib, .sty, or .cls file from the explorer.",
-                fileURL: editorFileURL ?? selectedFileURL
-            )
+        Group {
+            switch presentation {
+            case .text:
+                LaTeXEditorView(
+                    text: $text,
+                    settings: settings,
+                    syntaxMode: editorFileURL?.editorSyntaxMode ?? .plain,
+                    jump: jump
+                )
+            case .readOnlyText(let preview):
+                ReadOnlyTextPreviewPane(preview: preview)
+            case .pdf(let url):
+                PDFPaneView(documentURL: url)
+            case .image(let url):
+                ImagePreviewPane(fileURL: url)
+            case .external(let url):
+                FilePlaceholderView(
+                    icon: "doc",
+                    title: url.lastPathComponent,
+                    message: "This file type is not editable in TEXnologia yet.",
+                    fileURL: url
+                )
+            case .none:
+                FilePlaceholderView(
+                    icon: "text.cursor",
+                    title: "No source file selected",
+                    message: "Choose a .tex, .bib, .sty, or .cls file from the explorer.",
+                    fileURL: editorFileURL ?? selectedFileURL
+                )
+            }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .fixedSize(horizontal: false, vertical: false)
     }
 }
 
@@ -424,6 +428,8 @@ private struct RightPreviewPane: View {
             .padding(.top, 32)
             .padding(.trailing, 8)
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .fixedSize(horizontal: false, vertical: false)
     }
 
     @ViewBuilder
@@ -503,6 +509,8 @@ private struct PreviewPane: View {
                 .stroke(isFocused ? Color.orange : Color.clear, lineWidth: 1.25)
                 .padding(1)
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .fixedSize(horizontal: false, vertical: false)
     }
 }
 
@@ -611,12 +619,14 @@ private struct ReadOnlyTextPreviewPane: View {
 
 private struct ImagePreviewPane: View {
     var fileURL: URL
+    @State private var image: NSImage?
+    @State private var isLoading = false
 
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { proxy in
                 ZStack {
-                    if let image = NSImage(contentsOf: fileURL) {
+                    if let image {
                         Image(nsImage: image)
                             .resizable()
                             .scaledToFit()
@@ -625,6 +635,13 @@ private struct ImagePreviewPane: View {
                                 height: max(proxy.size.height - 40, 0)
                             )
                             .clipped()
+                    } else if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(
+                                width: max(proxy.size.width - 40, 0),
+                                height: max(proxy.size.height - 40, 0)
+                            )
                     } else {
                         VStack(spacing: 10) {
                             Image(systemName: "photo")
@@ -658,6 +675,15 @@ private struct ImagePreviewPane: View {
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .fixedSize(horizontal: false, vertical: false)
         .background(Color(nsColor: .textBackgroundColor))
+        .task(id: fileURL) {
+            image = nil
+            isLoading = true
+            let imageData = await Task.detached(priority: .userInitiated) {
+                try? Data(contentsOf: fileURL)
+            }.value
+            image = imageData.flatMap(NSImage.init(data:))
+            isLoading = false
+        }
     }
 }
 

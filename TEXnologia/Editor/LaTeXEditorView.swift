@@ -39,6 +39,7 @@ struct LaTeXEditorView: NSViewRepresentable {
         textView.textContainerInset = EditorLayout.textInset
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.lineBreakMode = .byWordWrapping
+        textView.layoutManager?.allowsNonContiguousLayout = true
         textView.string = text
         textView.delegate = context.coordinator
 
@@ -94,6 +95,8 @@ struct LaTeXEditorView: NSViewRepresentable {
         private let highlighter = LatexSyntaxHighlighter()
         private var isProgrammaticChange = false
         private var handledJumpID: UUID?
+        private var pendingHighlight: DispatchWorkItem?
+        private var spellCheckExcludedRanges: [NSRange] = []
 
         init(text: Binding<String>, settings: AppSettings, syntaxMode: EditorSyntaxMode) {
             self._text = text
@@ -105,7 +108,7 @@ struct LaTeXEditorView: NSViewRepresentable {
             guard !isProgrammaticChange else { return }
             guard let textView = notification.object as? NSTextView else { return }
             text = textView.string
-            highlight(textView, force: false)
+            scheduleHighlight(textView)
             lineNumberView?.needsDisplay = true
         }
 
@@ -119,13 +122,16 @@ struct LaTeXEditorView: NSViewRepresentable {
         }
 
         func highlight(_ textView: NSTextView, force: Bool) {
+            pendingHighlight?.cancel()
             highlighter.apply(to: textView.textStorage, text: textView.string, settings: settings, syntaxMode: syntaxMode)
             clearLatexSpellingMarkers(in: textView)
             lineNumberView?.needsDisplay = true
         }
 
         func textView(_ textView: NSTextView, shouldSetSpellingState value: Int, range affectedCharRange: NSRange) -> Int {
-            highlighter.isSpellCheckExcluded(affectedCharRange, in: textView.string, syntaxMode: syntaxMode) ? 0 : value
+            spellCheckExcludedRanges.contains { excludedRange in
+                NSIntersectionRange(affectedCharRange, excludedRange).length > 0
+            } ? 0 : value
         }
 
         func applySettings(to textView: NSTextView, force: Bool) {
@@ -159,6 +165,16 @@ struct LaTeXEditorView: NSViewRepresentable {
             textView.autoresizingMask = [.width]
         }
 
+        private func scheduleHighlight(_ textView: NSTextView) {
+            pendingHighlight?.cancel()
+            let workItem = DispatchWorkItem { [weak self, weak textView] in
+                guard let self, let textView else { return }
+                self.highlight(textView, force: false)
+            }
+            pendingHighlight = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(90), execute: workItem)
+        }
+
         func updateWrappingWidth(for textView: NSTextView) {
             textView.enclosingScrollView?.hasHorizontalScroller = false
             textView.textContainer?.widthTracksTextView = true
@@ -182,8 +198,13 @@ struct LaTeXEditorView: NSViewRepresentable {
         }
 
         private func clearLatexSpellingMarkers(in textView: NSTextView) {
-            guard settings.editorSpellChecking else { return }
-            for range in highlighter.spellCheckExcludedRanges(in: textView.string, syntaxMode: syntaxMode) where range.length > 0 {
+            guard settings.editorSpellChecking else {
+                spellCheckExcludedRanges = []
+                return
+            }
+            let excludedRanges = highlighter.spellCheckExcludedRanges(in: textView.string, syntaxMode: syntaxMode)
+            spellCheckExcludedRanges = excludedRanges
+            for range in excludedRanges where range.length > 0 {
                 textView.setSpellingState(0, range: range)
             }
         }
@@ -191,6 +212,10 @@ struct LaTeXEditorView: NSViewRepresentable {
 }
 
 private final class EditorScrollView: NSScrollView {
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
     override func tile() {
         verticalRulerView?.ruleThickness = EditorLayout.lineNumberGutterWidth
         super.tile()
