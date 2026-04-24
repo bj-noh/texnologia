@@ -30,12 +30,13 @@ struct ProjectSidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            utilityBar
+            explorerHeader
 
-            List(selection: $selectedFileURL) {
-                Section("Explorer") {
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 10) {
                     if let rootURL {
                         FileTreeHeader(rootURL: rootURL, saveState: saveState(for: rootURL))
+                            .padding(.horizontal, 16)
                             .contextMenu {
                                 projectContextMenu(for: rootURL)
                             }
@@ -50,6 +51,7 @@ struct ProjectSidebarView: View {
                                 commit: commitCreation,
                                 cancel: cancelCreation
                             )
+                            .padding(.horizontal, 16)
                         }
 
                         ForEach(tree) { node in
@@ -77,34 +79,52 @@ struct ProjectSidebarView: View {
                                 handleDrop: handleDrop
                             )
                             .environment(\.explorerSaveStates, saveStates)
+                            .padding(.horizontal, 16)
                         }
                     } else {
-                        Text("Open a project to browse files.")
-                            .foregroundStyle(.secondary)
+                        EmptyExplorerState()
+                            .padding(.horizontal, 16)
                     }
-                }
 
-                Section("Outline") {
-                    ForEach(index.outline) { item in
-                        Button {
-                            onSelectFile(item.location.fileURL)
-                        } label: {
-                            Text(item.title)
-                                .lineLimit(1)
+                    if !index.outline.isEmpty {
+                        ExplorerSectionHeader(title: "구조")
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+
+                        ForEach(index.outline) { item in
+                            Button {
+                                onSelectFile(item.location.fileURL)
+                            } label: {
+                                ExplorerMetadataRow(
+                                    title: item.title,
+                                    iconName: "list.bullet.indent",
+                                    accessory: "\(item.level)"
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 16)
+                            .foregroundStyle(.primary)
                         }
-                        .buttonStyle(.plain)
                     }
-                }
 
-                Section("Citations") {
-                    ForEach(index.citationKeys, id: \.self) { key in
-                        Text(key)
-                            .lineLimit(1)
+                    if !index.citationKeys.isEmpty {
+                        ExplorerSectionHeader(title: "인용")
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+
+                        ForEach(index.citationKeys, id: \.self) { key in
+                            ExplorerMetadataRow(
+                                title: key,
+                                iconName: "quote.bubble",
+                                accessory: nil
+                            )
+                            .padding(.horizontal, 16)
+                            .foregroundStyle(.primary)
+                        }
                     }
                 }
+                .padding(.bottom, 18)
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
         }
         .background(
             ExplorerKeyboardMonitor(
@@ -114,7 +134,12 @@ struct ProjectSidebarView: View {
             )
             .frame(width: 0, height: 0)
         )
-        .background(.thinMaterial)
+        .background(ExplorerStyle.sidebarBackground)
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(ExplorerStyle.separator)
+                .frame(width: 1)
+        }
         .clipShape(Rectangle())
         .onAppear {
             reloadTree()
@@ -144,8 +169,14 @@ struct ProjectSidebarView: View {
         }
     }
 
-    private var utilityBar: some View {
-        HStack(spacing: 6) {
+    private var explorerHeader: some View {
+        HStack(spacing: 12) {
+            Text("프로젝트")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(ExplorerStyle.mutedText)
+
+            Spacer()
+
             Button {
                 beginCreateFile(in: selectedDirectoryURL())
             } label: {
@@ -164,27 +195,14 @@ struct ProjectSidebarView: View {
                 reloadTree()
                 onRefreshProject(nil, selectedFileURL)
             } label: {
-                Image(systemName: "arrow.clockwise")
+                Image(systemName: "line.3.horizontal.decrease")
             }
             .help("Refresh Explorer")
-
-            Spacer()
-
-            Button {
-                if let selectedFileURL {
-                    revealInFinder(selectedFileURL)
-                } else if let rootURL {
-                    revealInFinder(rootURL)
-                }
-            } label: {
-                Image(systemName: "magnifyingglass")
-            }
-            .help("Reveal in Finder")
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
+        .buttonStyle(ExplorerIconButtonStyle())
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
     }
 
     @ViewBuilder
@@ -722,12 +740,13 @@ private struct ExplorerNodeRow: View {
     }
 
     private var rowLabel: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             ExplorerSaveStateDot(state: saveState(for: node.url))
 
             Image(systemName: node.iconName)
-                .foregroundStyle(node.isDirectory ? .blue : .secondary)
-                .frame(width: 16)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(node.isDirectory ? ExplorerStyle.folderIcon : ExplorerStyle.fileIcon)
+                .frame(width: 18)
 
             if renamingURL == node.url {
                 InlineRenameTextField(
@@ -739,22 +758,39 @@ private struct ExplorerNodeRow: View {
                 .frame(minWidth: 72, maxWidth: .infinity)
             } else {
                 Text(node.url.lastPathComponent)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(ExplorerStyle.primaryText)
                     .lineLimit(1)
             }
 
             if node.url == mainFileURL {
                 Image(systemName: "star.fill")
-                    .font(.caption)
-                    .foregroundStyle(.yellow)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(ExplorerStyle.accent)
                     .help("Main file")
             }
             Spacer()
         }
-        .padding(.vertical, 1)
-        .contentShape(Rectangle())
-        .background(dropTarget == node.url ? Color.accentColor.opacity(0.18) : Color.clear)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(rowBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .onTapGesture {
             select(node.url)
+        }
+    }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if dropTarget == node.url {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(ExplorerStyle.dropFill)
+        } else if selectedFileURL == node.url {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(ExplorerStyle.selectedFill)
+        } else {
+            Color.clear
         }
     }
 
@@ -852,6 +888,103 @@ private struct ExplorerSaveStateDot: View {
     }
 }
 
+private struct ExplorerSectionHeader: View {
+    var title: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(ExplorerStyle.mutedText)
+            Spacer()
+        }
+        .padding(.top, 4)
+    }
+}
+
+private struct ExplorerMetadataRow: View {
+    var title: String
+    var iconName: String
+    var accessory: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: iconName)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(ExplorerStyle.fileIcon)
+                .frame(width: 18)
+
+            Text(title)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(ExplorerStyle.primaryText)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if let accessory {
+                Text(accessory)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(ExplorerStyle.mutedText)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+    }
+}
+
+private struct EmptyExplorerState: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "folder")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(ExplorerStyle.folderIcon)
+
+            Text("프로젝트를 열어주세요")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(ExplorerStyle.primaryText)
+
+            Text("LaTeX 폴더, .tex 파일, 또는 .zip을 열면 여기에 표시됩니다.")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(ExplorerStyle.mutedText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(ExplorerStyle.selectedFill)
+        )
+    }
+}
+
+private struct ExplorerIconButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(ExplorerStyle.iconButton)
+            .frame(width: 26, height: 26)
+            .background(
+                Circle()
+                    .fill(configuration.isPressed ? ExplorerStyle.selectedFill : Color.clear)
+            )
+            .contentShape(Circle())
+    }
+}
+
+private enum ExplorerStyle {
+    static let sidebarBackground = Color(nsColor: .controlBackgroundColor).opacity(0.82)
+    static let separator = Color(nsColor: .separatorColor).opacity(0.35)
+    static let selectedFill = Color(nsColor: .quaternaryLabelColor).opacity(0.22)
+    static let dropFill = Color.accentColor.opacity(0.16)
+    static let primaryText = Color(nsColor: .labelColor).opacity(0.86)
+    static let mutedText = Color(nsColor: .secondaryLabelColor)
+    static let folderIcon = Color(nsColor: .secondaryLabelColor)
+    static let fileIcon = Color(nsColor: .tertiaryLabelColor)
+    static let iconButton = Color(nsColor: .secondaryLabelColor)
+    static let accent = Color.orange.opacity(0.9)
+}
+
 private final class ProjectDirectoryMonitor {
     private let rootURL: URL
     private let onChange: () -> Void
@@ -942,10 +1075,11 @@ private struct PendingCreationRow: View {
     var cancel: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             Image(systemName: isDirectory ? "folder.badge.plus" : "doc.badge.plus")
-                .foregroundStyle(isDirectory ? .blue : .secondary)
-                .frame(width: 16)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(isDirectory ? ExplorerStyle.folderIcon : ExplorerStyle.fileIcon)
+                .frame(width: 18)
 
             InlineRenameTextField(
                 text: $draft,
@@ -957,7 +1091,12 @@ private struct PendingCreationRow: View {
 
             Spacer()
         }
-        .padding(.vertical, 1)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(ExplorerStyle.selectedFill)
+        )
     }
 }
 
@@ -1132,18 +1271,21 @@ private struct FileTreeHeader: View {
     var saveState: ExplorerSaveState?
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             ExplorerSaveStateDot(state: saveState)
 
-            Image(systemName: "shippingbox")
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
+            Image(systemName: "folder")
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(ExplorerStyle.folderIcon)
+                .frame(width: 18)
+
             Text(rootURL.lastPathComponent)
-                .fontWeight(.medium)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(ExplorerStyle.primaryText)
                 .lineLimit(1)
             Spacer()
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
     }
 }
 
