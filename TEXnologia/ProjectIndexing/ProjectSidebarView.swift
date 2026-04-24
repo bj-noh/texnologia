@@ -7,6 +7,7 @@ struct ProjectSidebarView: View {
     var index: ProjectIndex
     var rootURL: URL?
     var mainFileURL: URL?
+    var outlineFileURL: URL?
     var hidesIntermediateArtifacts: Bool
     var saveStates: [URL: ExplorerSaveState] = [:]
     @Binding var selectedFileURL: URL?
@@ -86,19 +87,19 @@ struct ProjectSidebarView: View {
                             .padding(.horizontal, 16)
                     }
 
-                    if !index.outline.isEmpty {
+                    if !currentFileOutline.isEmpty {
                         ExplorerSectionHeader(title: "구조")
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
 
-                        ForEach(index.outline) { item in
+                        ForEach(currentFileOutline) { item in
                             Button {
                                 onSelectFile(item.location.fileURL)
                             } label: {
                                 ExplorerMetadataRow(
                                     title: item.title,
-                                    iconName: "list.bullet.indent",
-                                    accessory: "\(item.level)"
+                                    iconName: outlineIconName(for: item.command),
+                                    accessory: nil
                                 )
                             }
                             .buttonStyle(.plain)
@@ -203,6 +204,23 @@ struct ProjectSidebarView: View {
         .padding(.horizontal, 16)
         .padding(.top, 16)
         .padding(.bottom, 12)
+    }
+
+    private var currentFileOutline: [OutlineItem] {
+        guard let outlineFileURL else { return [] }
+        let allowedCommands: Set<String> = ["section", "subsection", "paragraph"]
+        return index.outline.filter { item in
+            item.location.fileURL == outlineFileURL && allowedCommands.contains(item.command)
+        }
+    }
+
+    private func outlineIconName(for command: String) -> String {
+        switch command {
+        case "section": return "text.alignleft"
+        case "subsection": return "text.indent"
+        case "paragraph": return "paragraphsign"
+        default: return "list.bullet.indent"
+        }
     }
 
     @ViewBuilder

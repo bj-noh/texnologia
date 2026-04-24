@@ -23,7 +23,7 @@ struct ProjectIndex: Equatable, Sendable {
 struct OutlineItem: Identifiable, Equatable, Sendable {
     var id = UUID()
     var title: String
+    var command: String
     var level: Int
     var location: TextLocation
 }
-

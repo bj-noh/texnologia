@@ -57,10 +57,11 @@ final class ProjectIndexer {
         var labels: [(String, TextLocation)] = []
 
         for (index, line) in lines.enumerated() {
-            if let section = capture(#"\\(section|subsection|subsubsection)\{([^}]*)\}"#, in: line) {
+            if let section = capture(#"\\(section|subsection|paragraph)\*?(?:\[[^\]]*\])?\{([^}]*)\}"#, in: line) {
                 outline.append(OutlineItem(
                     title: section.value,
-                    level: section.command == "section" ? 1 : 2,
+                    command: section.command,
+                    level: outlineLevel(for: section.command),
                     location: TextLocation(fileURL: fileURL, line: index + 1, column: 1)
                 ))
             }
@@ -71,6 +72,15 @@ final class ProjectIndexer {
         }
 
         return (outline, labels)
+    }
+
+    private func outlineLevel(for command: String) -> Int {
+        switch command {
+        case "section": return 1
+        case "subsection": return 2
+        case "paragraph": return 3
+        default: return 1
+        }
     }
 
     private func parseBibFile(_ fileURL: URL) -> [String] {
