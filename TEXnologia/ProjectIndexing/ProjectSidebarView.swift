@@ -17,6 +17,8 @@ struct ProjectSidebarView: View {
     @State private var expanded: Set<URL> = []
     @State private var renamingURL: URL?
     @State private var renameDraft = ""
+    @State private var pendingCreation: PendingCreation?
+    @State private var creationDraft = ""
     @State private var deleteTarget: URL?
     @State private var dropTarget: URL?
 
@@ -35,6 +37,15 @@ struct ProjectSidebarView: View {
                                 handleDrop(providers, into: rootURL)
                             }
 
+                        if pendingCreation?.directory == rootURL {
+                            PendingCreationRow(
+                                draft: $creationDraft,
+                                isDirectory: pendingCreation?.isDirectory == true,
+                                commit: commitCreation,
+                                cancel: cancelCreation
+                            )
+                        }
+
                         ForEach(tree) { node in
                             ExplorerNodeRow(
                                 node: node,
@@ -43,13 +54,17 @@ struct ProjectSidebarView: View {
                                 dropTarget: $dropTarget,
                                 renamingURL: $renamingURL,
                                 renameDraft: $renameDraft,
+                                pendingCreation: $pendingCreation,
+                                creationDraft: $creationDraft,
                                 select: select,
                                 rename: beginRename,
                                 commitRename: commitRename,
                                 cancelRename: cancelRename,
+                                commitCreation: commitCreation,
+                                cancelCreation: cancelCreation,
                                 delete: { deleteTarget = $0 },
                                 reveal: revealInFinder,
-                                createFile: createTexFile,
+                                createFile: beginCreateFile,
                                 createFolder: createFolder,
                                 makeMain: onMakeMainFile,
                                 mainFileURL: mainFileURL,
@@ -115,11 +130,11 @@ struct ProjectSidebarView: View {
     private var utilityBar: some View {
         HStack(spacing: 6) {
             Button {
-                createTexFile(in: selectedDirectoryURL())
+                beginCreateFile(in: selectedDirectoryURL())
             } label: {
                 Image(systemName: "doc.badge.plus")
             }
-            .help("New TeX File")
+            .help("New File")
 
             Button {
                 createFolder(in: selectedDirectoryURL())
@@ -157,7 +172,7 @@ struct ProjectSidebarView: View {
 
     @ViewBuilder
     private func projectContextMenu(for rootURL: URL) -> some View {
-        Button("New TeX File") { createTexFile(in: rootURL) }
+        Button("New File") { beginCreateFile(in: rootURL) }
         Button("New Folder") { createFolder(in: rootURL) }
         Divider()
         Button("Reveal in Finder") { revealInFinder(rootURL) }
@@ -199,12 +214,14 @@ struct ProjectSidebarView: View {
     }
 
     private func beginRename(_ url: URL) {
+        pendingCreation = nil
+        creationDraft = ""
         renamingURL = url
-        renameDraft = url.inlineRenameStem
+        renameDraft = url.lastPathComponent
     }
 
     private func commitRename(_ url: URL) {
-        let proposedName = url.recombinedName(fromInlineRenameStem: renameDraft)
+        let proposedName = renameDraft
         renamingURL = nil
         renameDraft = ""
         rename(url, to: proposedName)
@@ -254,12 +271,40 @@ struct ProjectSidebarView: View {
         }
     }
 
-    private func createTexFile(in directory: URL) {
-        createItem(named: "untitled.tex", in: directory, isDirectory: false)
+    private func beginCreateFile(in directory: URL) {
+        beginCreation(in: directory, isDirectory: false)
     }
 
     private func createFolder(in directory: URL) {
-        createItem(named: "New Folder", in: directory, isDirectory: true)
+        beginCreation(in: directory, isDirectory: true)
+    }
+
+    private func beginCreation(in directory: URL, isDirectory: Bool) {
+        renamingURL = nil
+        renameDraft = ""
+        pendingCreation = PendingCreation(directory: directory, isDirectory: isDirectory)
+        creationDraft = ""
+        expanded.insert(directory)
+    }
+
+    private func commitCreation() {
+        guard let pendingCreation else { return }
+        let trimmed = creationDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            cancelCreation()
+            return
+        }
+        guard !trimmed.contains("/") else {
+            onStatus("File names cannot contain '/'.")
+            return
+        }
+
+        createItem(named: trimmed, in: pendingCreation.directory, isDirectory: pendingCreation.isDirectory)
+    }
+
+    private func cancelCreation() {
+        pendingCreation = nil
+        creationDraft = ""
     }
 
     private func createItem(named baseName: String, in directory: URL, isDirectory: Bool) {
@@ -270,14 +315,15 @@ struct ProjectSidebarView: View {
                 try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
                 expanded.insert(destination)
             } else {
-                try "\\section{New Section}\n".write(to: destination, atomically: true, encoding: .utf8)
+                try Data().write(to: destination, options: .atomic)
                 selectedFileURL = destination
             }
 
+            pendingCreation = nil
+            creationDraft = ""
             expanded.insert(directory)
             reloadTree()
             onRefreshProject(nil, isDirectory ? selectedFileURL : destination)
-            beginRename(destination)
             onStatus("Created \(destination.lastPathComponent).")
         } catch {
             onStatus("Create failed: \(error.localizedDescription)")
@@ -409,6 +455,8 @@ struct ProjectSessionsSidebarView: View {
     @State private var dropTarget: URL?
     @State private var renamingURL: URL?
     @State private var renameDraft = ""
+    @State private var pendingCreation: PendingCreation?
+    @State private var creationDraft = ""
 
     var body: some View {
         List(selection: $selectedFileURL) {
@@ -446,6 +494,8 @@ struct ProjectSessionsSidebarView: View {
             dropTarget: $dropTarget,
             renamingURL: $renamingURL,
             renameDraft: $renameDraft,
+            pendingCreation: $pendingCreation,
+            creationDraft: $creationDraft,
             select: { url in
                 onActivateSession(session.id)
                 onSelectFile(url)
@@ -453,6 +503,8 @@ struct ProjectSessionsSidebarView: View {
             rename: { _ in onStatus("Use the active project explorer to rename files.") },
             commitRename: { _ in onStatus("Use the active project explorer to rename files.") },
             cancelRename: {},
+            commitCreation: { onStatus("Use the active project explorer to create files.") },
+            cancelCreation: {},
             delete: { _ in onStatus("Use the active project explorer to delete files.") },
             reveal: revealInFinder,
             createFile: { _ in onStatus("Use the active project explorer to create files.") },
@@ -523,10 +575,14 @@ private struct ExplorerNodeRow: View {
     @Binding var dropTarget: URL?
     @Binding var renamingURL: URL?
     @Binding var renameDraft: String
+    @Binding var pendingCreation: PendingCreation?
+    @Binding var creationDraft: String
     var select: (URL) -> Void
     var rename: (URL) -> Void
     var commitRename: (URL) -> Void
     var cancelRename: () -> Void
+    var commitCreation: () -> Void
+    var cancelCreation: () -> Void
     var delete: (URL) -> Void
     var reveal: (URL) -> Void
     var createFile: (URL) -> Void
@@ -546,10 +602,14 @@ private struct ExplorerNodeRow: View {
                         dropTarget: $dropTarget,
                         renamingURL: $renamingURL,
                         renameDraft: $renameDraft,
+                        pendingCreation: $pendingCreation,
+                        creationDraft: $creationDraft,
                         select: select,
                         rename: rename,
                         commitRename: commitRename,
                         cancelRename: cancelRename,
+                        commitCreation: commitCreation,
+                        cancelCreation: cancelCreation,
                         delete: delete,
                         reveal: reveal,
                         createFile: createFile,
@@ -557,6 +617,15 @@ private struct ExplorerNodeRow: View {
                         makeMain: makeMain,
                         mainFileURL: mainFileURL,
                         handleDrop: handleDrop
+                    )
+                }
+
+                if pendingCreation?.directory == node.url {
+                    PendingCreationRow(
+                        draft: $creationDraft,
+                        isDirectory: pendingCreation?.isDirectory == true,
+                        commit: commitCreation,
+                        cancel: cancelCreation
                     )
                 }
             } label: {
@@ -591,16 +660,11 @@ private struct ExplorerNodeRow: View {
             if renamingURL == node.url {
                 InlineRenameTextField(
                     text: $renameDraft,
+                    initialSelectionRange: node.url.renameStemSelectionRange,
                     commit: { commitRename(node.url) },
                     cancel: cancelRename
                 )
                 .frame(minWidth: 72, maxWidth: .infinity)
-
-                if !node.url.inlineRenameExtensionSuffix.isEmpty {
-                    Text(node.url.inlineRenameExtensionSuffix)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
             } else {
                 Text(node.url.lastPathComponent)
                     .lineLimit(1)
@@ -625,7 +689,7 @@ private struct ExplorerNodeRow: View {
     @ViewBuilder
     private var contextMenu: some View {
         if node.isDirectory {
-            Button("New TeX File") { createFile(node.url) }
+            Button("New File") { createFile(node.url) }
             Button("New Folder") { createFolder(node.url) }
             Divider()
         }
@@ -662,8 +726,41 @@ private struct ExplorerNodeRow: View {
     }
 }
 
+private struct PendingCreation: Identifiable, Hashable {
+    let id = UUID()
+    var directory: URL
+    var isDirectory: Bool
+}
+
+private struct PendingCreationRow: View {
+    @Binding var draft: String
+    var isDirectory: Bool
+    var commit: () -> Void
+    var cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isDirectory ? "folder.badge.plus" : "doc.badge.plus")
+                .foregroundStyle(isDirectory ? .blue : .secondary)
+                .frame(width: 16)
+
+            InlineRenameTextField(
+                text: $draft,
+                initialSelectionRange: nil,
+                commit: commit,
+                cancel: cancel
+            )
+            .frame(minWidth: 72, maxWidth: .infinity)
+
+            Spacer()
+        }
+        .padding(.vertical, 1)
+    }
+}
+
 private struct InlineRenameTextField: NSViewRepresentable {
     @Binding var text: String
+    var initialSelectionRange: NSRange?
     var commit: () -> Void
     var cancel: () -> Void
 
@@ -680,7 +777,11 @@ private struct InlineRenameTextField: NSViewRepresentable {
 
         DispatchQueue.main.async {
             textField.window?.makeFirstResponder(textField)
-            textField.currentEditor()?.selectAll(nil)
+            if let initialSelectionRange {
+                textField.currentEditor()?.selectedRange = initialSelectionRange
+            } else {
+                textField.currentEditor()?.selectAll(nil)
+            }
         }
 
         return textField
@@ -887,24 +988,10 @@ private extension URL {
         (try? resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
     }
 
-    var inlineRenameStem: String {
+    var renameStemSelectionRange: NSRange? {
         guard !isDirectory, !pathExtension.isEmpty else {
-            return lastPathComponent
+            return nil
         }
-        return deletingPathExtension().lastPathComponent
-    }
-
-    var inlineRenameExtensionSuffix: String {
-        guard !isDirectory, !pathExtension.isEmpty else {
-            return ""
-        }
-        return ".\(pathExtension)"
-    }
-
-    func recombinedName(fromInlineRenameStem stem: String) -> String {
-        guard !isDirectory, !pathExtension.isEmpty else {
-            return stem
-        }
-        return "\(stem).\(pathExtension)"
+        return NSRange(location: 0, length: deletingPathExtension().lastPathComponent.count)
     }
 }

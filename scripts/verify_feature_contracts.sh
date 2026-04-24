@@ -67,8 +67,20 @@ require_pattern "TEXnologia/App/AppModel.swift" "closeSession" "session close mo
 require_pattern "TEXnologia/App/AppModel.swift" "sessions.remove" "session-only close removal"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "Use as Main File" "main file context menu"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "InlineRenameTextField" "inline explorer rename"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "PendingCreationRow" "blank inline file creation"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "creationDraft = \"\"" "new file starts with empty input"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "renameDraft = url.lastPathComponent" "rename edits full filename"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "renameStemSelectionRange" "rename selects stem by default"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerKeyboardMonitor" "explorer keyboard shortcuts"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "deletePermanently" "actual filesystem delete"
+if grep -q 'New TeX File' "$ROOT_DIR/TEXnologia/ProjectIndexing/ProjectSidebarView.swift"; then
+  echo "FAIL new file action should not force TeX wording" >&2
+  exit 1
+fi
+if grep -q 'untitled.tex' "$ROOT_DIR/TEXnologia/ProjectIndexing/ProjectSidebarView.swift"; then
+  echo "FAIL new file action should not prefill .tex extension" >&2
+  exit 1
+fi
 require_pattern "TEXnologia/App/AppModel.swift" "saveSelectedFileAndBuildIfNeeded" "command-s compile on save"
 require_pattern "TEXnologia/App/TEXnologiaApp.swift" "Save and Compile" "save menu compile wording"
 require_pattern "TEXnologia/App/MainWindowView.swift" "appModel.openProjectPanel" "welcome/menu open action remains"
