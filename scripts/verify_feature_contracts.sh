@@ -146,7 +146,8 @@ require_pattern "TEXnologia/Editor/LatexSyntaxHighlighter.swift" "applyCommentTo
 require_pattern "TEXnologia/Editor/LatexSyntaxHighlighter.swift" "overlapsCommentRange" "comment overlap guard"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "LineNumberRulerView" "editor line numbers"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "hasVerticalRuler = true" "line number ruler enabled"
-require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "gutterWidth: CGFloat = 58" "line number gutter width"
+require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "lineNumberGutterWidth: CGFloat = 64" "line number gutter width"
+require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "override var requiredThickness" "line number ruler reserves space"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "NSColor.separatorColor" "line number gutter separator"
 require_pattern "TEXnologia/App/MainWindowView.swift" "editorSyntaxMode" "extension-based syntax routing"
 

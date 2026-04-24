@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
 
+private enum EditorLayout {
+    static let lineNumberGutterWidth: CGFloat = 64
+    static let textInset = NSSize(width: 22, height: 12)
+}
+
 struct LaTeXEditorView: NSViewRepresentable {
     @Binding var text: String
     var settings: AppSettings
@@ -12,7 +17,7 @@ struct LaTeXEditorView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = EditorScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
@@ -31,7 +36,7 @@ struct LaTeXEditorView: NSViewRepresentable {
         textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.autoresizingMask = [.width]
-        textView.textContainerInset = NSSize(width: 18, height: 12)
+        textView.textContainerInset = EditorLayout.textInset
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.lineBreakMode = .byWordWrapping
         textView.string = text
@@ -42,6 +47,7 @@ struct LaTeXEditorView: NSViewRepresentable {
         scrollView.verticalRulerView = lineNumberView
         scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = true
+        scrollView.tile()
         textView.updateWrappingContainerWidth()
         context.coordinator.textView = textView
         context.coordinator.lineNumberView = lineNumberView
@@ -54,6 +60,11 @@ struct LaTeXEditorView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        scrollView.hasVerticalRuler = true
+        scrollView.rulersVisible = true
+        scrollView.verticalRulerView?.ruleThickness = EditorLayout.lineNumberGutterWidth
+        scrollView.tile()
+
         let settingsChanged = context.coordinator.settings != settings
         let syntaxModeChanged = context.coordinator.syntaxMode != syntaxMode
         context.coordinator.settings = settings
@@ -179,6 +190,23 @@ struct LaTeXEditorView: NSViewRepresentable {
     }
 }
 
+private final class EditorScrollView: NSScrollView {
+    override func tile() {
+        verticalRulerView?.ruleThickness = EditorLayout.lineNumberGutterWidth
+        super.tile()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        tile()
+    }
+
+    override func layout() {
+        super.layout()
+        verticalRulerView?.ruleThickness = EditorLayout.lineNumberGutterWidth
+    }
+}
+
 private final class WrappingTextView: NSTextView {
     private var isUpdatingWrapWidth = false
 
@@ -227,7 +255,7 @@ private final class WrappingTextView: NSTextView {
 
 fileprivate final class LineNumberRulerView: NSRulerView {
     private weak var textView: NSTextView?
-    private let gutterWidth: CGFloat = 58
+    private let gutterWidth = EditorLayout.lineNumberGutterWidth
 
     init(textView: NSTextView) {
         self.textView = textView
@@ -238,6 +266,10 @@ fileprivate final class LineNumberRulerView: NSRulerView {
 
     required init(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override var requiredThickness: CGFloat {
+        gutterWidth
     }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
