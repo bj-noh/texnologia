@@ -44,9 +44,20 @@ enum LLMClientFactory {
         guard config.isConfigured else { throw LLMError.missingAPIKey }
         switch config.provider {
         case .anthropic:
-            return AnthropicClient(apiKey: config.apiKey, model: config.model, maxTokens: config.maxTokens)
-        case .openai:
-            return OpenAIClient(apiKey: config.apiKey, model: config.model, maxTokens: config.maxTokens)
+            return AnthropicClient(
+                apiKey: config.apiKey,
+                model: config.model,
+                maxTokens: config.maxTokens,
+                endpoint: config.provider.endpoint
+            )
+        case .openai, .gemini, .xai, .deepseek, .mistral, .groq, .ollama:
+            return OpenAICompatibleClient(
+                apiKey: config.apiKey,
+                model: config.model,
+                maxTokens: config.maxTokens,
+                endpoint: config.provider.endpoint,
+                provider: config.provider
+            )
         }
     }
 }
@@ -57,12 +68,13 @@ final class AnthropicClient: LLMClient {
     private let apiKey: String
     private let model: String
     private let maxTokens: Int
-    private let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
+    private let endpoint: URL
 
-    init(apiKey: String, model: String, maxTokens: Int) {
+    init(apiKey: String, model: String, maxTokens: Int, endpoint: URL) {
         self.apiKey = apiKey
         self.model = model
         self.maxTokens = maxTokens
+        self.endpoint = endpoint
     }
 
     func send(messages: [ChatMessage], tools: [LLMToolDef], system: String?) async throws -> LLMResponse {
@@ -161,18 +173,21 @@ final class AnthropicClient: LLMClient {
     }
 }
 
-// MARK: - OpenAI
+// MARK: - OpenAI-compatible (OpenAI, Gemini, xAI, DeepSeek, Mistral, Groq, Ollama)
 
-final class OpenAIClient: LLMClient {
+final class OpenAICompatibleClient: LLMClient {
     private let apiKey: String
     private let model: String
     private let maxTokens: Int
-    private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
+    private let endpoint: URL
+    private let provider: LLMProvider
 
-    init(apiKey: String, model: String, maxTokens: Int) {
+    init(apiKey: String, model: String, maxTokens: Int, endpoint: URL, provider: LLMProvider) {
         self.apiKey = apiKey
         self.model = model
         self.maxTokens = maxTokens
+        self.endpoint = endpoint
+        self.provider = provider
     }
 
     func send(messages: [ChatMessage], tools: [LLMToolDef], system: String?) async throws -> LLMResponse {
@@ -221,9 +236,9 @@ final class OpenAIClient: LLMClient {
 
         var body: [String: Any] = [
             "model": model,
-            "max_tokens": maxTokens,
             "messages": openMessages
         ]
+        body[maxTokensFieldName] = maxTokens
         if !tools.isEmpty {
             body["tools"] = tools.map { tool in
                 [
@@ -239,7 +254,9 @@ final class OpenAIClient: LLMClient {
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if provider.requiresAPIKey {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -276,5 +293,14 @@ final class OpenAIClient: LLMClient {
 
         let stopReason = choice["finish_reason"] as? String
         return LLMResponse(blocks: blocks, stopReason: stopReason)
+    }
+
+    private var maxTokensFieldName: String {
+        switch provider {
+        case .openai:
+            return model.hasPrefix("o1") || model.hasPrefix("o3") ? "max_completion_tokens" : "max_tokens"
+        default:
+            return "max_tokens"
+        }
     }
 }

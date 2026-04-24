@@ -109,9 +109,17 @@ struct PreferencesView: View {
                 }
             }
             .onChange(of: settings.llm.provider) { _, newValue in
-                if settings.llm.model.isEmpty || LLMProvider.allCases.contains(where: { $0.defaultModel == settings.llm.model }) {
+                let allKnownDefaults = Set(LLMProvider.allCases.map(\.defaultModel))
+                if settings.llm.model.isEmpty || allKnownDefaults.contains(settings.llm.model) {
                     settings.llm.model = newValue.defaultModel
                 }
+            }
+
+            Picker("Suggested Model", selection: modelPickerBinding) {
+                ForEach(settings.llm.provider.suggestedModels, id: \.self) { model in
+                    Text(model).tag(model)
+                }
+                Text("Custom…").tag("__custom__")
             }
 
             TextField("Model", text: $settings.llm.model)
@@ -119,6 +127,7 @@ struct PreferencesView: View {
 
             SecureField("API Key", text: $settings.llm.apiKey)
                 .textFieldStyle(.roundedBorder)
+                .disabled(!settings.llm.provider.requiresAPIKey)
 
             HStack {
                 Stepper(value: $settings.llm.maxTokens, in: 256...8192, step: 256) {
@@ -126,7 +135,7 @@ struct PreferencesView: View {
                 }
             }
 
-            Text(providerHint)
+            Text(settings.llm.provider.apiKeyHint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -140,13 +149,18 @@ struct PreferencesView: View {
         .padding()
     }
 
-    private var providerHint: String {
-        switch settings.llm.provider {
-        case .anthropic:
-            return "Anthropic API key starts with sk-ant-. Keys are stored locally in app settings."
-        case .openai:
-            return "OpenAI API key starts with sk-. Keys are stored locally in app settings."
-        }
+    private var modelPickerBinding: Binding<String> {
+        Binding<String>(
+            get: {
+                let suggested = settings.llm.provider.suggestedModels
+                return suggested.contains(settings.llm.model) ? settings.llm.model : "__custom__"
+            },
+            set: { newValue in
+                if newValue != "__custom__" {
+                    settings.llm.model = newValue
+                }
+            }
+        )
     }
 
     private static var monospacedFontNames: [String] {
