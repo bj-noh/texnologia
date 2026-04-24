@@ -6,6 +6,7 @@
 
 Write LaTeX in a fast native editor, compile locally, preview the PDF, and let the AI assistant revise your manuscript through an inline diff you control. Every provider you care about — Anthropic, OpenAI, Gemini, Grok, DeepSeek, Mistral, Groq, or local Ollama — just paste your token.
 
+![TEXnologia hero shot](assets/texnologia-fullscreen0.png)
 ![TEXnologia welcome screen](assets/texnologia-fullscreen1.png)
 ![TEXnologia with project explorer, editor, PDF preview, and AI pane](assets/texnologia-fullscreen2.png)
 
