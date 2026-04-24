@@ -86,7 +86,7 @@ struct MainWindowView: View {
                 focusedPane: $appModel.focusedPreviewPane,
                 primaryPresentation: appModel.primaryPreviewPresentation,
                 secondaryPresentation: appModel.secondaryPreviewPresentation,
-                isSplit: rightPaneSplit
+                isSplit: $rightPaneSplit
             )
                 .frame(minWidth: 360)
         }
@@ -129,18 +129,22 @@ struct MainWindowView: View {
             Button {
                 historyPresented.toggle()
             } label: {
-                Label("History", systemImage: "clock.arrow.circlepath")
+                Image(systemName: "clock.arrow.circlepath")
             }
+            .help("History")
+            .accessibilityLabel("History")
             .popover(isPresented: $historyPresented) {
                 HistoryPopover(entries: appModel.history, restore: appModel.restoreHistoryEntry)
             }
 
             Button {
-                rightPaneSplit.toggle()
+                appModel.exportFocusedPDF()
             } label: {
-                Image(systemName: rightPaneSplit ? "rectangle.split.1x2" : "rectangle.split.2x1")
+                Image(systemName: "square.and.arrow.down")
             }
-            .help("Split preview pane")
+            .help("Export PDF")
+            .accessibilityLabel("Export PDF")
+            .disabled(!appModel.canExportFocusedPDF)
 
             Button("Compile") {
                 appModel.compile()
@@ -229,9 +233,35 @@ private struct RightPreviewPane: View {
     @Binding var focusedPane: PreviewPaneID
     var primaryPresentation: FilePresentation
     var secondaryPresentation: FilePresentation
-    var isSplit: Bool
+    @Binding var isSplit: Bool
 
     var body: some View {
+        ZStack(alignment: .topTrailing) {
+            previewContent
+
+            Button {
+                isSplit.toggle()
+            } label: {
+                Image(systemName: isSplit ? "rectangle.split.1x2" : "rectangle.split.2x1")
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(width: 24, height: 22)
+            }
+            .buttonStyle(.plain)
+            .help(isSplit ? "Use single preview pane" : "Split preview pane")
+            .accessibilityLabel(isSplit ? "Use single preview pane" : "Split preview pane")
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 5))
+            .overlay {
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.secondary.opacity(0.22), lineWidth: 0.6)
+            }
+            .opacity(0.82)
+            .padding(.top, 32)
+            .padding(.trailing, 8)
+        }
+    }
+
+    @ViewBuilder
+    private var previewContent: some View {
         if isSplit {
             VSplitView {
                 PreviewPane(

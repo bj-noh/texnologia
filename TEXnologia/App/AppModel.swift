@@ -26,6 +26,10 @@ final class AppModel: ObservableObject {
     private let buildService = LatexBuildService()
     private var selectedFileEncoding: String.Encoding = .utf8
 
+    var canExportFocusedPDF: Bool {
+        focusedPDFURL != nil
+    }
+
     init() {
         settings = SettingsStore.loadMigratingIfNeeded()
     }
@@ -305,6 +309,32 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func exportFocusedPDF() {
+        guard let sourceURL = focusedPDFURL else {
+            statusMessage = "No compiled PDF is available to export yet."
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = sourceURL.lastPathComponent
+        panel.message = "Export the PDF shown in the focused preview pane."
+        panel.prompt = "Export PDF"
+
+        guard panel.runModal() == .OK, let destinationURL = panel.url else {
+            return
+        }
+
+        do {
+            let pdfData = try Data(contentsOf: sourceURL)
+            try pdfData.write(to: destinationURL, options: .atomic)
+            statusMessage = "Exported \(destinationURL.lastPathComponent)."
+        } catch {
+            statusMessage = "Could not export PDF: \(error.localizedDescription)"
+        }
+    }
+
     private func showInFocusedPreview(_ presentation: FilePresentation) {
         switch focusedPreviewPane {
         case .primary:
@@ -312,6 +342,21 @@ final class AppModel: ObservableObject {
         case .secondary:
             secondaryPreviewPresentation = presentation
         }
+    }
+
+    private var focusedPDFURL: URL? {
+        let focusedPresentation: FilePresentation
+        if focusedPreviewPane == .primary {
+            focusedPresentation = primaryPreviewPresentation
+        } else {
+            focusedPresentation = secondaryPreviewPresentation
+        }
+
+        if case .pdf(let url) = focusedPresentation {
+            return url
+        }
+
+        return pdfDocumentURL
     }
 
     private func captureHistorySnapshot(reason: String) {
