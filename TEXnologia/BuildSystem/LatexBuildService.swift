@@ -89,6 +89,7 @@ actor LatexBuildService {
     ) async throws -> ProcessExecutionResult {
         var accumulatedOutput = ""
         var lastResult = ProcessExecutionResult(exitCode: 1, output: "")
+        var didRunBibTeX = false
 
         for pass in 1...max(1, configuration.maxDirectPasses) {
             let result = try await ProcessRunner().run(
@@ -107,6 +108,34 @@ actor LatexBuildService {
             }
 
             let transcript = result.output + "\n" + readTranscript(configuration)
+            if !didRunBibTeX, shouldRunBibTeX(configuration, transcript: transcript) {
+                didRunBibTeX = true
+                if let bibTeX = toolchain.bibTeX {
+                    let bibResult = try await ProcessRunner().run(
+                        executable: bibTeX,
+                        arguments: [configuration.rootFile.deletingPathExtension().lastPathComponent],
+                        workingDirectory: configuration.outputDirectory,
+                        environment: bibTeXEnvironment(configuration, toolchain: toolchain)
+                    )
+                    accumulatedOutput += "\n--- BibTeX ---\n"
+                    accumulatedOutput += bibResult.output
+                    lastResult = ProcessExecutionResult(
+                        exitCode: bibResult.exitCode,
+                        output: accumulatedOutput
+                    )
+
+                    if bibResult.exitCode != 0 {
+                        break
+                    }
+
+                    continue
+                } else {
+                    accumulatedOutput += "\n--- BibTeX ---\nBibTeX was required but no bibtex executable was found.\n"
+                    lastResult = ProcessExecutionResult(exitCode: 1, output: accumulatedOutput)
+                    break
+                }
+            }
+
             if !needsRerun(transcript) {
                 break
             }
@@ -126,6 +155,27 @@ actor LatexBuildService {
         arguments.append(configuration.shellEscape ? "-shell-escape" : "-no-shell-escape")
         arguments.append(configuration.rootFile.lastPathComponent)
         return arguments
+    }
+
+    private func shouldRunBibTeX(_ configuration: BuildConfiguration, transcript: String) -> Bool {
+        let baseName = configuration.rootFile.deletingPathExtension().lastPathComponent
+        let auxURL = configuration.outputDirectory.appendingPathComponent(baseName).appendingPathExtension("aux")
+        guard FileManager.default.fileExists(atPath: auxURL.path) else { return false }
+
+        let aux = (try? String(contentsOf: auxURL, encoding: .utf8)) ?? ""
+        let bblURL = configuration.outputDirectory.appendingPathComponent(baseName).appendingPathExtension("bbl")
+        let hasBibliographyData = aux.contains("\\bibdata") || transcript.localizedCaseInsensitiveContains("No file \(baseName).bbl")
+        let unresolvedCitations = transcript.localizedCaseInsensitiveContains("Citation") && transcript.localizedCaseInsensitiveContains("undefined")
+
+        return hasBibliographyData && (!FileManager.default.fileExists(atPath: bblURL.path) || unresolvedCitations)
+    }
+
+    private func bibTeXEnvironment(_ configuration: BuildConfiguration, toolchain: Toolchain) -> [String: String] {
+        var environment = toolchain.environment
+        let projectTree = configuration.projectDirectory.path + "//:"
+        environment["BIBINPUTS"] = projectTree + (environment["BIBINPUTS"] ?? "")
+        environment["BSTINPUTS"] = projectTree + (environment["BSTINPUTS"] ?? "")
+        return environment
     }
 
     private func prepareBuildDirectory(_ outputDirectory: URL) throws {
@@ -250,6 +300,7 @@ struct Toolchain: Sendable {
     var pdfLaTeX: URL?
     var xeLaTeX: URL?
     var luaLaTeX: URL?
+    var bibTeX: URL?
     var searchedDirectories: [URL]
 
     var environment: [String: String] {
@@ -276,12 +327,16 @@ struct ToolchainResolver: Sendable {
             pdfLaTeX: find("pdflatex", in: directories),
             xeLaTeX: find("xelatex", in: directories),
             luaLaTeX: find("lualatex", in: directories),
+            bibTeX: find("bibtex", in: directories),
             searchedDirectories: directories
         )
     }
 
     private func candidateDirectories(year: TexToolchainYear) -> [URL] {
         var paths = [
+            "/usr/local/texlive/\(year.rawValue)basic/bin/universal-darwin",
+            "/usr/local/texlive/\(year.rawValue)basic/bin/x86_64-darwin",
+            "/usr/local/texlive/\(year.rawValue)basic/bin/aarch64-darwin",
             "/usr/local/texlive/\(year.rawValue)/bin/universal-darwin",
             "/usr/local/texlive/\(year.rawValue)/bin/x86_64-darwin",
             "/usr/local/texlive/\(year.rawValue)/bin/aarch64-darwin",
