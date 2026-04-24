@@ -23,7 +23,10 @@ DerivedData/
 *.synctex.gz
 *.toc
 
+# Keep regression fixtures even when their extensions look like generated files.
+!Tests/Fixtures/**/*.log
+!Tests/Fixtures/**/*.out
+
 # Local editor state
 *.xcuserstate
 *.xcuserdata/
-
