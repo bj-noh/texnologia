@@ -95,3 +95,8 @@ enum FilePresentation: Equatable {
     case image(URL)
     case external(URL)
 }
+
+enum ExplorerSaveState: Equatable {
+    case dirty
+    case saved
+}

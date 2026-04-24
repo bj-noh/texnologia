@@ -64,9 +64,12 @@ struct MainWindowView: View {
                     rootURL: appModel.workspace?.rootURL,
                     mainFileURL: appModel.workspace?.mainFileURL,
                     hidesIntermediateArtifacts: appModel.settings.hidesIntermediateArtifacts,
+                    saveStates: appModel.fileSaveStates,
                     selectedFileURL: $appModel.selectedFileURL,
                     onSelectFile: appModel.selectFile,
                     onMakeMainFile: appModel.setMainFile,
+                    onMoveFile: appModel.moveExplorerSaveState,
+                    onDeleteFile: appModel.removeExplorerSaveState,
                     onRefreshProject: appModel.refreshProject,
                     onExternalProjectChange: appModel.refreshProjectFromDisk,
                     onStatus: appModel.setStatus
@@ -78,7 +81,10 @@ struct MainWindowView: View {
                     selectedFileURL: appModel.selectedFileURL,
                     editorFileURL: appModel.editorFileURL,
                     isEditorSaved: appModel.isEditorSaved,
-                    text: $appModel.editorText,
+                    text: Binding(
+                        get: { appModel.editorText },
+                        set: { appModel.updateEditorText($0) }
+                    ),
                     settings: appModel.settings,
                     jump: appModel.editorJump
                 )
@@ -114,6 +120,15 @@ struct MainWindowView: View {
                 .lineLimit(1)
 
             Spacer()
+
+            Button {
+                appModel.saveSelectedFileAndBuildIfNeeded()
+            } label: {
+                Image(systemName: "tray.and.arrow.down")
+            }
+            .help("Save")
+            .accessibilityLabel("Save")
+            .disabled(!appModel.canSaveEditorFile)
 
             Button {
                 historyPresented.toggle()

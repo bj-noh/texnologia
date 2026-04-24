@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     @Published var statusMessage: String = "Drop a LaTeX folder, .tex file, or .zip archive to begin."
     @Published var isImporting: Bool = false
     @Published var history: [HistoryEntry] = []
+    @Published var fileSaveStates: [URL: ExplorerSaveState] = [:]
     @Published private var savedEditorFileURL: URL?
     @Published private var savedEditorText: String = ""
 
@@ -33,9 +34,31 @@ final class AppModel: ObservableObject {
         focusedPDFURL != nil
     }
 
+    var canSaveEditorFile: Bool {
+        editorFileURL != nil && selectedFilePresentation == .text
+    }
+
     var isEditorSaved: Bool {
         guard selectedFilePresentation == .text, let editorFileURL else { return false }
         return savedEditorFileURL == editorFileURL && savedEditorText == editorText
+    }
+
+    var editorSaveState: ExplorerSaveState? {
+        guard canSaveEditorFile else { return nil }
+        return isEditorSaved ? .saved : .dirty
+    }
+
+    func updateEditorText(_ newText: String) {
+        editorText = newText
+        guard selectedFilePresentation == .text, let editorFileURL else { return }
+
+        if savedEditorFileURL == editorFileURL, savedEditorText == newText {
+            if fileSaveStates[editorFileURL] != nil {
+                fileSaveStates[editorFileURL] = .saved
+            }
+        } else {
+            fileSaveStates[editorFileURL] = .dirty
+        }
     }
 
     init() {
@@ -173,6 +196,9 @@ final class AppModel: ObservableObject {
             selectedFileEncoding = loaded.encoding
             selectedFilePresentation = .text
             markEditorClean(fileURL: selectedFileURL, text: editorText)
+            if fileSaveStates[selectedFileURL] != nil {
+                fileSaveStates[selectedFileURL] = .saved
+            }
             statusMessage = "Opened \(selectedFileURL.lastPathComponent)."
         } catch TextFileLoader.LoadError.fileTooLarge {
             loadReadOnlyPreview(for: selectedFileURL)
@@ -265,6 +291,7 @@ final class AppModel: ObservableObject {
         self.workspace = workspace
         projectIndex = indexer.indexProject(rootURL: workspace.rootURL, mainFileURL: mainFile)
         upsertSession(workspace: workspace, index: projectIndex)
+        pruneMissingExplorerSaveStates()
 
         if let preferredSelection, fileManager.fileExists(atPath: preferredSelection.path) {
             selectedFileURL = preferredSelection
@@ -290,9 +317,44 @@ final class AppModel: ObservableObject {
         self.workspace = workspace
         projectIndex = indexer.indexProject(rootURL: workspace.rootURL, mainFileURL: mainFile)
         upsertSession(workspace: workspace, index: projectIndex)
+        pruneMissingExplorerSaveStates()
 
         if let selectedFileURL, !fileManager.fileExists(atPath: selectedFileURL.path) {
             self.selectedFileURL = editorFileURL.flatMap { fileManager.fileExists(atPath: $0.path) ? $0 : nil } ?? mainFile
+        }
+    }
+
+    func moveExplorerSaveState(from sourceURL: URL, to destinationURL: URL) {
+        fileSaveStates = Dictionary(
+            uniqueKeysWithValues: fileSaveStates.map { url, state in
+                (movedURL(url, from: sourceURL, to: destinationURL) ?? url, state)
+            }
+        )
+
+        if let selectedFileURL, let moved = movedURL(selectedFileURL, from: sourceURL, to: destinationURL) {
+            self.selectedFileURL = moved
+        }
+        if let editorFileURL, let moved = movedURL(editorFileURL, from: sourceURL, to: destinationURL) {
+            self.editorFileURL = moved
+        }
+        if let savedEditorFileURL, let moved = movedURL(savedEditorFileURL, from: sourceURL, to: destinationURL) {
+            self.savedEditorFileURL = moved
+        }
+    }
+
+    func removeExplorerSaveState(for deletedURL: URL) {
+        fileSaveStates = fileSaveStates.filter { url, _ in
+            !url.isSameOrDescendant(of: deletedURL)
+        }
+
+        if selectedFileURL?.isSameOrDescendant(of: deletedURL) == true {
+            selectedFileURL = nil
+        }
+        if editorFileURL?.isSameOrDescendant(of: deletedURL) == true {
+            editorFileURL = nil
+            editorText = ""
+            selectedFilePresentation = .none
+            markEditorClean(fileURL: nil, text: "")
         }
     }
 
@@ -307,6 +369,7 @@ final class AppModel: ObservableObject {
             captureHistorySnapshot(reason: "Before save")
             try editorText.write(to: editorFileURL, atomically: true, encoding: selectedFileEncoding)
             markEditorClean(fileURL: editorFileURL, text: editorText)
+            fileSaveStates[editorFileURL] = .saved
             statusMessage = "Saved \(editorFileURL.lastPathComponent)."
         } catch {
             statusMessage = "Could not save \(editorFileURL.lastPathComponent): \(error.localizedDescription)"
@@ -334,6 +397,7 @@ final class AppModel: ObservableObject {
         selectedFilePresentation = .text
         selectedFileEncoding = .utf8
         editorText = entry.text
+        fileSaveStates[entry.fileURL] = .dirty
         activateSession(containing: entry.fileURL)
         statusMessage = "Restored \(entry.fileName) from history."
     }
@@ -415,6 +479,26 @@ final class AppModel: ObservableObject {
         } catch {
             statusMessage = "Could not export PDF: \(error.localizedDescription)"
         }
+    }
+
+    private func pruneMissingExplorerSaveStates() {
+        let fileManager = FileManager.default
+        fileSaveStates = fileSaveStates.filter { url, _ in
+            fileManager.fileExists(atPath: url.path)
+        }
+    }
+
+    private func movedURL(_ url: URL, from sourceURL: URL, to destinationURL: URL) -> URL? {
+        if url == sourceURL {
+            return destinationURL
+        }
+
+        let sourcePath = sourceURL.standardizedFileURL.path
+        let urlPath = url.standardizedFileURL.path
+        guard urlPath.hasPrefix(sourcePath + "/") else { return nil }
+
+        let relativePath = String(urlPath.dropFirst(sourcePath.count + 1))
+        return destinationURL.appendingPathComponent(relativePath)
     }
 
     private func showInFocusedPreview(_ presentation: FilePresentation) {
@@ -587,6 +671,11 @@ private extension UTType {
 private extension URL {
     func isInsideOrEqual(to rootURL: URL) -> Bool {
         path == rootURL.path || path.hasPrefix(rootURL.path + "/")
+    }
+
+    func isSameOrDescendant(of rootURL: URL) -> Bool {
+        standardizedFileURL.path == rootURL.standardizedFileURL.path
+            || standardizedFileURL.path.hasPrefix(rootURL.standardizedFileURL.path + "/")
     }
 
     var isEditableTextFile: Bool {

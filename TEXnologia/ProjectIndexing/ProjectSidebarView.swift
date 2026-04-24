@@ -8,9 +8,12 @@ struct ProjectSidebarView: View {
     var rootURL: URL?
     var mainFileURL: URL?
     var hidesIntermediateArtifacts: Bool
+    var saveStates: [URL: ExplorerSaveState] = [:]
     @Binding var selectedFileURL: URL?
     var onSelectFile: (URL) -> Void
     var onMakeMainFile: (URL) -> Void = { _ in }
+    var onMoveFile: (URL, URL) -> Void = { _, _ in }
+    var onDeleteFile: (URL) -> Void = { _ in }
     var onRefreshProject: (_ preferredMainFile: URL?, _ preferredSelection: URL?) -> Void
     var onExternalProjectChange: () -> Void
     var onStatus: (String) -> Void
@@ -32,7 +35,7 @@ struct ProjectSidebarView: View {
             List(selection: $selectedFileURL) {
                 Section("Explorer") {
                     if let rootURL {
-                        FileTreeHeader(rootURL: rootURL)
+                        FileTreeHeader(rootURL: rootURL, saveState: saveState(for: rootURL))
                             .contextMenu {
                                 projectContextMenu(for: rootURL)
                             }
@@ -73,6 +76,7 @@ struct ProjectSidebarView: View {
                                 mainFileURL: mainFileURL,
                                 handleDrop: handleDrop
                             )
+                            .environment(\.explorerSaveStates, saveStates)
                         }
                     } else {
                         Text("Open a project to browse files.")
@@ -277,6 +281,7 @@ struct ProjectSidebarView: View {
         do {
             try FileManager.default.moveItem(at: url, to: destination)
             selectedFileURL = selectedFileURL == url ? destination : selectedFileURL
+            onMoveFile(url, destination)
             reloadTree()
             onRefreshProject(nil, selectedFileURL)
             onStatus("Renamed \(url.lastPathComponent) to \(trimmed).")
@@ -291,6 +296,7 @@ struct ProjectSidebarView: View {
             if selectedFileURL == url || selectedFileURL?.path.hasPrefix(url.path + "/") == true {
                 selectedFileURL = nil
             }
+            onDeleteFile(url)
             reloadTree()
             onRefreshProject(nil, selectedFileURL)
             onStatus("Deleted \(url.lastPathComponent).")
@@ -411,6 +417,7 @@ struct ProjectSidebarView: View {
         do {
             if source.path.hasPrefix(rootURL.path + "/") {
                 try FileManager.default.moveItem(at: source, to: destination)
+                onMoveFile(source, destination)
                 onStatus("Moved \(source.lastPathComponent).")
             } else {
                 if source.isDirectory {
@@ -448,6 +455,29 @@ struct ProjectSidebarView: View {
         }
 
         return directory.appendingPathComponent("\(base) \(UUID().uuidString).\(ext)")
+    }
+
+    private func saveState(for url: URL) -> ExplorerSaveState? {
+        Self.saveState(for: url, in: saveStates)
+    }
+
+    private static func saveState(for url: URL, in states: [URL: ExplorerSaveState]) -> ExplorerSaveState? {
+        if let directState = states[url] {
+            return directState
+        }
+
+        guard url.isDirectory else { return nil }
+        let descendantStates = states
+            .filter { fileURL, _ in fileURL.path.hasPrefix(url.path + "/") }
+            .map(\.value)
+
+        if descendantStates.contains(.dirty) {
+            return .dirty
+        }
+        if descendantStates.contains(.saved) {
+            return .saved
+        }
+        return nil
     }
 
     private static func fileURL(from item: NSSecureCoding?) -> URL? {
@@ -596,8 +626,20 @@ struct ProjectSessionsSidebarView: View {
     }
 }
 
+private struct ExplorerSaveStatesKey: EnvironmentKey {
+    static let defaultValue: [URL: ExplorerSaveState] = [:]
+}
+
+private extension EnvironmentValues {
+    var explorerSaveStates: [URL: ExplorerSaveState] {
+        get { self[ExplorerSaveStatesKey.self] }
+        set { self[ExplorerSaveStatesKey.self] = newValue }
+    }
+}
+
 private struct ExplorerNodeRow: View {
     var node: ExplorerNode
+    @Environment(\.explorerSaveStates) private var saveStates
     @Binding var selectedFileURL: URL?
     @Binding var expanded: Set<URL>
     @Binding var dropTarget: URL?
@@ -681,6 +723,8 @@ private struct ExplorerNodeRow: View {
 
     private var rowLabel: some View {
         HStack(spacing: 6) {
+            ExplorerSaveStateDot(state: saveState(for: node.url))
+
             Image(systemName: node.iconName)
                 .foregroundStyle(node.isDirectory ? .blue : .secondary)
                 .frame(width: 16)
@@ -751,6 +795,60 @@ private struct ExplorerNodeRow: View {
             get: { dropTarget == node.url },
             set: { isTargeted in dropTarget = isTargeted ? node.url : nil }
         )
+    }
+
+    private func saveState(for url: URL) -> ExplorerSaveState? {
+        if let directState = saveStates[url] {
+            return directState
+        }
+
+        guard url.isDirectory else { return nil }
+        let descendantStates = saveStates
+            .filter { fileURL, _ in fileURL.path.hasPrefix(url.path + "/") }
+            .map(\.value)
+
+        if descendantStates.contains(.dirty) {
+            return .dirty
+        }
+        if descendantStates.contains(.saved) {
+            return .saved
+        }
+        return nil
+    }
+}
+
+private struct ExplorerSaveStateDot: View {
+    var state: ExplorerSaveState?
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 6, height: 6)
+            .opacity(state == nil ? 0 : 1)
+            .frame(width: 8)
+            .help(helpText)
+    }
+
+    private var color: Color {
+        switch state {
+        case .dirty:
+            return .orange
+        case .saved:
+            return .green
+        case .none:
+            return .clear
+        }
+    }
+
+    private var helpText: String {
+        switch state {
+        case .dirty:
+            return "Modified"
+        case .saved:
+            return "Saved"
+        case .none:
+            return ""
+        }
     }
 }
 
@@ -1031,9 +1129,12 @@ private struct ExplorerKeyboardMonitor: NSViewRepresentable {
 
 private struct FileTreeHeader: View {
     var rootURL: URL
+    var saveState: ExplorerSaveState?
 
     var body: some View {
         HStack(spacing: 6) {
+            ExplorerSaveStateDot(state: saveState)
+
             Image(systemName: "shippingbox")
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
