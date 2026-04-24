@@ -5,7 +5,7 @@ actor LatexBuildService {
         do {
             try prepareBuildDirectory(configuration.outputDirectory)
 
-            let toolchain = ToolchainResolver().resolve()
+            let toolchain = ToolchainResolver().resolve(year: configuration.toolchainYear)
             let result: ProcessExecutionResult
 
             if let latexmk = toolchain.latexmk {
@@ -174,7 +174,7 @@ actor LatexBuildService {
             issues: [
                 BuildIssue(
                     severity: .error,
-                    message: "No TeX engine was found for \(configuration.engine.displayName). Install MacTeX/BasicTeX or configure a TeX toolchain.",
+                    message: "No TeX engine was found for \(configuration.engine.displayName) \(configuration.toolchainYear.displayName). Install MacTeX/BasicTeX or choose another TeX Live year.",
                     location: nil,
                     rawLogExcerpt: searched
                 )
@@ -269,8 +269,8 @@ struct Toolchain: Sendable {
 }
 
 struct ToolchainResolver: Sendable {
-    func resolve() -> Toolchain {
-        let directories = candidateDirectories()
+    func resolve(year: TexToolchainYear) -> Toolchain {
+        let directories = candidateDirectories(year: year)
         return Toolchain(
             latexmk: find("latexmk", in: directories),
             pdfLaTeX: find("pdflatex", in: directories),
@@ -280,8 +280,11 @@ struct ToolchainResolver: Sendable {
         )
     }
 
-    private func candidateDirectories() -> [URL] {
+    private func candidateDirectories(year: TexToolchainYear) -> [URL] {
         var paths = [
+            "/usr/local/texlive/\(year.rawValue)/bin/universal-darwin",
+            "/usr/local/texlive/\(year.rawValue)/bin/x86_64-darwin",
+            "/usr/local/texlive/\(year.rawValue)/bin/aarch64-darwin",
             "/Library/TeX/texbin",
             "/opt/homebrew/bin",
             "/usr/local/bin",

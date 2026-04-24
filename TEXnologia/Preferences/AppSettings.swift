@@ -2,6 +2,7 @@ import Foundation
 
 struct AppSettings: Codable, Equatable {
     var defaultEngine: LatexEngine
+    var toolchainYear: TexToolchainYear
     var shellEscapeEnabled: Bool
     var hidesIntermediateArtifacts: Bool
     var autoBuildOnSave: Bool
@@ -16,6 +17,7 @@ struct AppSettings: Codable, Equatable {
 
     static let `default` = AppSettings(
         defaultEngine: .pdfLaTeX,
+        toolchainYear: .texLive2024,
         shellEscapeEnabled: false,
         hidesIntermediateArtifacts: true,
         autoBuildOnSave: true,

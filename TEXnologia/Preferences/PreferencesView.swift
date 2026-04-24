@@ -81,6 +81,12 @@ struct PreferencesView: View {
                 }
             }
 
+            Picker("TeX Live Year", selection: $settings.toolchainYear) {
+                ForEach(TexToolchainYear.allCases, id: \.self) { year in
+                    Text(year.displayName).tag(year)
+                }
+            }
+
             Toggle("Enable Shell Escape", isOn: $settings.shellEscapeEnabled)
             Text("Shell escape is disabled by default because TeX documents can execute external commands when it is enabled.")
                 .font(.caption)

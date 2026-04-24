@@ -228,6 +228,7 @@ final class AppModel: ObservableObject {
             let configuration = BuildConfiguration.default(
                 rootFile: mainFileURL,
                 engine: settings.defaultEngine,
+                toolchainYear: settings.toolchainYear,
                 shellEscape: settings.shellEscapeEnabled
             )
             let result = await buildService.build(configuration: configuration)

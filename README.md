@@ -22,6 +22,7 @@ The current implementation is a Swift Package app using SwiftUI, AppKit, `NSText
 - Read-only, bounded previews for generated LaTeX text files such as `.log`, `.out`, `.aux`, and `.fls`
 - Local LaTeX build through `latexmk` when available, with direct engine fallback
 - `pdflatex`, `xelatex`, and `lualatex` support
+- TeX Live year selection limited to `2024` and `2025`; default is `pdfLaTeX` with `2024`
 - Build cancellation-safe process wrapper and issue parsing
 - Collapsed issue dock by default, expandable when needed
 - Preferences for engine, shell escape, theme, font, wrapping-related editor behavior, spell checking, and artifact visibility
@@ -44,11 +45,12 @@ swift --version
 Check TeX:
 
 ```bash
-/Library/TeX/texbin/pdflatex --version
+/usr/local/texlive/2024/bin/universal-darwin/pdflatex --version
 /Library/TeX/texbin/latexmk --version
 ```
 
 If `latexmk` is missing but `pdflatex`, `xelatex`, or `lualatex` exists, TEXnologia can still use the direct-engine fallback.
+TEXnologia searches the selected TeX Live year first, then falls back to the active `/Library/TeX/texbin` symlink.
 
 ## Run In Development
 
@@ -115,6 +117,7 @@ Open the macOS app settings window to configure:
 - Line spacing
 - Spell checking
 - Default TeX engine
+- TeX Live year: `2024` or `2025`
 - Shell escape
 - Auto-build on save
 - Intermediate artifact hiding

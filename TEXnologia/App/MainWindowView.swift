@@ -83,20 +83,6 @@ struct MainWindowView: View {
 
             Spacer()
 
-            Button {
-                appModel.openProjectPanel()
-            } label: {
-                Label("Open", systemImage: "folder")
-            }
-            .help("Open a folder, .tex file, or .zip archive")
-
-            Button {
-                appModel.openZipPanel()
-            } label: {
-                Label("Zip", systemImage: "archivebox")
-            }
-            .help("Import a zip archive")
-
             Picker("Engine", selection: $appModel.settings.defaultEngine) {
                 ForEach(LatexEngine.allCases, id: \.self) { engine in
                     Text(engine.displayName).tag(engine)
@@ -106,6 +92,16 @@ struct MainWindowView: View {
                 appModel.updateSettings(appModel.settings)
             }
             .frame(width: 140)
+
+            Picker("Year", selection: $appModel.settings.toolchainYear) {
+                ForEach(TexToolchainYear.allCases, id: \.self) { year in
+                    Text(year.displayName).tag(year)
+                }
+            }
+            .onChange(of: appModel.settings.toolchainYear) { _, _ in
+                appModel.updateSettings(appModel.settings)
+            }
+            .frame(width: 92)
 
             Button("Build") {
                 appModel.build()

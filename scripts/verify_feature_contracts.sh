@@ -27,6 +27,17 @@ require_pattern "TEXnologia/App/AppModel.swift" "case \"pdf\"" "PDF routing"
 require_pattern "TEXnologia/App/AppModel.swift" "case \"png\", \"jpg\", \"jpeg\"" "image routing"
 
 require_pattern "TEXnologia/App/MainWindowView.swift" "CenterPaneView" "center pane dispatcher"
+require_pattern "TEXnologia/App/MainWindowView.swift" "toolchainYear" "toolbar TeX year picker"
+require_pattern "TEXnologia/App/MainWindowView.swift" "Picker(\"Year\"" "toolbar year picker"
+require_pattern "TEXnologia/App/MainWindowView.swift" "appModel.openProjectPanel" "welcome/menu open action remains"
+if grep -q 'Label("Open"' "$ROOT_DIR/TEXnologia/App/MainWindowView.swift"; then
+  echo "FAIL toolbar Open button should not be present" >&2
+  exit 1
+fi
+if grep -q 'Label("Zip"' "$ROOT_DIR/TEXnologia/App/MainWindowView.swift"; then
+  echo "FAIL toolbar Zip button should not be present" >&2
+  exit 1
+fi
 require_pattern "TEXnologia/App/MainWindowView.swift" "ReadOnlyTextPreviewPane" "read-only text preview pane"
 require_pattern "TEXnologia/App/MainWindowView.swift" "doc.text.magnifyingglass" "generated text preview icon"
 require_pattern "TEXnologia/App/MainWindowView.swift" "PDFPaneView(documentURL: url)" "center PDF rendering"
@@ -49,6 +60,11 @@ require_pattern "Package.swift" "TEXnologia" "renamed executable product"
 require_pattern "scripts/build_app_bundle.sh" "TEXnologia.app" "renamed app bundle"
 require_pattern "TEXnologia/App/MainWindowView.swift" "TEXnologia" "renamed visible app title"
 require_pattern "TEXnologia/BuildSystem/BuildConfiguration.swift" ".texnologia-build" "renamed build directory"
+require_pattern "TEXnologia/BuildSystem/BuildConfiguration.swift" "TexToolchainYear" "TeX Live year model"
+require_pattern "TEXnologia/BuildSystem/BuildConfiguration.swift" "texLive2024" "default TeX Live 2024 support"
+require_pattern "TEXnologia/BuildSystem/BuildConfiguration.swift" "texLive2025" "TeX Live 2025 support"
+require_pattern "TEXnologia/Preferences/AppSettings.swift" "toolchainYear: .texLive2024" "default pdflatex 2024 setting"
+require_pattern "TEXnologia/BuildSystem/LatexBuildService.swift" "/usr/local/texlive/" "year-specific TeX path lookup"
 
 require_pattern "TEXnologia/Editor/LatexSyntaxHighlighter.swift" "isSpellCheckExcluded" "LaTeX spellcheck exclusion test"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "shouldSetSpellingState" "LaTeX spellcheck veto"

@@ -3,10 +3,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENGINE="${ENGINE:-pdflatex}"
-TEXBIN="/Library/TeX/texbin/$ENGINE"
+TEXLIVE_YEAR="${TEXLIVE_YEAR:-2024}"
+TEXBIN=""
+for candidate in \
+  "/usr/local/texlive/$TEXLIVE_YEAR/bin/universal-darwin/$ENGINE" \
+  "/usr/local/texlive/$TEXLIVE_YEAR/bin/x86_64-darwin/$ENGINE" \
+  "/usr/local/texlive/$TEXLIVE_YEAR/bin/aarch64-darwin/$ENGINE" \
+  "/Library/TeX/texbin/$ENGINE"; do
+  if [[ -x "$candidate" ]]; then
+    TEXBIN="$candidate"
+    break
+  fi
+done
 
 if [[ ! -x "$TEXBIN" ]]; then
-  echo "Missing TeX engine: $TEXBIN" >&2
+  echo "Missing TeX engine for TeX Live $TEXLIVE_YEAR: $ENGINE" >&2
   exit 2
 fi
 
