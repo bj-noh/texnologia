@@ -160,7 +160,12 @@ private struct CenterPaneView: View {
     var body: some View {
         switch presentation {
         case .text:
-            LaTeXEditorView(text: $text, settings: settings, jump: jump)
+            LaTeXEditorView(
+                text: $text,
+                settings: settings,
+                syntaxMode: selectedFileURL?.editorSyntaxMode ?? .plain,
+                jump: jump
+            )
         case .readOnlyText(let preview):
             ReadOnlyTextPreviewPane(preview: preview)
         case .pdf(let url):
@@ -181,6 +186,19 @@ private struct CenterPaneView: View {
                 message: "Choose a .tex, .bib, .sty, or .cls file from the explorer.",
                 fileURL: selectedFileURL
             )
+        }
+    }
+}
+
+private extension URL {
+    var editorSyntaxMode: EditorSyntaxMode {
+        switch pathExtension.lowercased() {
+        case "bib":
+            return .bibtex
+        case "tex", "sty", "cls", "ltx":
+            return .latex
+        default:
+            return .plain
         }
     }
 }

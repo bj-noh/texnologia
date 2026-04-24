@@ -19,6 +19,7 @@ require_pattern "TEXnologia/App/AppModel.swift" "isGeneratedTextPreviewFile" "ge
 require_pattern "TEXnologia/App/AppModel.swift" "loadReadOnlyPreview" "read-only generated file preview"
 require_pattern "TEXnologia/App/AppModel.swift" "maxEditableBytes" "large editable file guard"
 require_pattern "TEXnologia/App/AppModel.swift" '"sty"' "sty remains editable"
+require_pattern "TEXnologia/App/AppModel.swift" '"bib"' "bib remains editable"
 require_pattern "TEXnologia/App/AppModel.swift" '"log", "aux", "bbl", "blg", "toc", "out", "fls"' "generated extensions are preview-only"
 require_pattern "TEXnologia/App/AppModel.swift" '"json"' "JSON routing"
 require_pattern "TEXnologia/App/AppModel.swift" "prettyPrintedJSONIfPossible" "JSON pretty print"
@@ -54,5 +55,7 @@ require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "shouldSetSpellingStat
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "setSpellingState(0" "clearing LaTeX spelling markers"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "CheckingType.grammar" "English grammar checking"
 require_pattern "TEXnologia/Editor/LatexSyntaxHighlighter.swift" "latexOnlyCommandNames" "citation/reference spellcheck filtering"
+require_pattern "TEXnologia/Editor/LatexSyntaxHighlighter.swift" "BibTokenizer" "BibTeX syntax highlighting"
+require_pattern "TEXnologia/App/MainWindowView.swift" "editorSyntaxMode" "extension-based syntax routing"
 
 echo "PASS feature contracts"

@@ -4,10 +4,11 @@ import SwiftUI
 struct LaTeXEditorView: NSViewRepresentable {
     @Binding var text: String
     var settings: AppSettings
+    var syntaxMode: EditorSyntaxMode = .latex
     var jump: EditorJump?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, settings: settings)
+        Coordinator(text: $text, settings: settings, syntaxMode: syntaxMode)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -40,6 +41,7 @@ struct LaTeXEditorView: NSViewRepresentable {
         textView.updateWrappingContainerWidth()
         context.coordinator.textView = textView
         context.coordinator.settings = settings
+        context.coordinator.syntaxMode = syntaxMode
         context.coordinator.applySettings(to: textView, force: true)
         context.coordinator.highlight(textView, force: true)
         return scrollView
@@ -48,7 +50,9 @@ struct LaTeXEditorView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         let settingsChanged = context.coordinator.settings != settings
+        let syntaxModeChanged = context.coordinator.syntaxMode != syntaxMode
         context.coordinator.settings = settings
+        context.coordinator.syntaxMode = syntaxMode
         context.coordinator.applySettings(to: textView, force: settingsChanged)
         context.coordinator.updateWrappingWidth(for: textView)
 
@@ -58,7 +62,7 @@ struct LaTeXEditorView: NSViewRepresentable {
             return
         }
 
-        if settingsChanged {
+        if settingsChanged || syntaxModeChanged {
             context.coordinator.highlight(textView, force: true)
         }
 
@@ -69,13 +73,15 @@ struct LaTeXEditorView: NSViewRepresentable {
         @Binding private var text: String
         weak var textView: NSTextView?
         var settings: AppSettings
+        var syntaxMode: EditorSyntaxMode
         private let highlighter = LatexSyntaxHighlighter()
         private var isProgrammaticChange = false
         private var handledJumpID: UUID?
 
-        init(text: Binding<String>, settings: AppSettings) {
+        init(text: Binding<String>, settings: AppSettings, syntaxMode: EditorSyntaxMode) {
             self._text = text
             self.settings = settings
+            self.syntaxMode = syntaxMode
         }
 
         func textDidChange(_ notification: Notification) {
@@ -94,12 +100,12 @@ struct LaTeXEditorView: NSViewRepresentable {
         }
 
         func highlight(_ textView: NSTextView, force: Bool) {
-            highlighter.apply(to: textView.textStorage, text: textView.string, settings: settings)
+            highlighter.apply(to: textView.textStorage, text: textView.string, settings: settings, syntaxMode: syntaxMode)
             clearLatexSpellingMarkers(in: textView)
         }
 
         func textView(_ textView: NSTextView, shouldSetSpellingState value: Int, range affectedCharRange: NSRange) -> Int {
-            highlighter.isSpellCheckExcluded(affectedCharRange, in: textView.string) ? 0 : value
+            highlighter.isSpellCheckExcluded(affectedCharRange, in: textView.string, syntaxMode: syntaxMode) ? 0 : value
         }
 
         func applySettings(to textView: NSTextView, force: Bool) {
@@ -156,7 +162,7 @@ struct LaTeXEditorView: NSViewRepresentable {
 
         private func clearLatexSpellingMarkers(in textView: NSTextView) {
             guard settings.editorSpellChecking else { return }
-            for range in highlighter.spellCheckExcludedRanges(in: textView.string) where range.length > 0 {
+            for range in highlighter.spellCheckExcludedRanges(in: textView.string, syntaxMode: syntaxMode) where range.length > 0 {
                 textView.setSpellingState(0, range: range)
             }
         }

@@ -12,6 +12,7 @@ The current implementation is a Swift Package app using SwiftUI, AppKit, `NSText
 
 - LaTeX-aware source editor using AppKit `NSTextView`
 - Syntax highlighting for commands, comments, braces, and math delimiters
+- BibTeX syntax highlighting for entry types, citation keys, field names, values, comments, numbers, and punctuation
 - Word-based wrapping with horizontal scrolling disabled
 - English spelling/grammar checking while suppressing red underlines for TeX syntax ranges
 - Folder, `.tex`, and `.zip` project opening
@@ -138,6 +139,7 @@ Run the core checks:
 swift build
 scripts/verify_feature_contracts.sh
 scripts/verify_file_routing.sh
+scripts/verify_bib_highlighting.sh
 scripts/verify_editor_wrapping.sh
 scripts/verify_app_icon_dimensions.sh
 ```
