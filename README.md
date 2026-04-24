@@ -8,6 +8,10 @@ The current implementation is a Swift Package app using SwiftUI, AppKit, `NSText
 
 ![TEXnologia icon](TEXnologia/Resources/TEXnologiaIcon.svg)
 
+## Screenshot
+
+![TEXnologia fullscreen welcome screen](docs/assets/texnologia-fullscreen.png)
+
 ## Current Features
 
 - LaTeX-aware source editor using AppKit `NSTextView`
