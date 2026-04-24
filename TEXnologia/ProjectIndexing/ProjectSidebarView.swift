@@ -34,10 +34,10 @@ struct ProjectSidebarView: View {
             explorerHeader
 
             ScrollView(.vertical) {
-                LazyVStack(alignment: .leading, spacing: 10) {
+                LazyVStack(alignment: .leading, spacing: 4) {
                     if let rootURL {
                         FileTreeHeader(rootURL: rootURL, saveState: saveState(for: rootURL))
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 12)
                             .contextMenu {
                                 projectContextMenu(for: rootURL)
                             }
@@ -52,7 +52,7 @@ struct ProjectSidebarView: View {
                                 commit: commitCreation,
                                 cancel: cancelCreation
                             )
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 12)
                         }
 
                         ForEach(tree) { node in
@@ -80,16 +80,16 @@ struct ProjectSidebarView: View {
                                 handleDrop: handleDrop
                             )
                             .environment(\.explorerSaveStates, saveStates)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 12)
                         }
                     } else {
                         EmptyExplorerState()
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 12)
                     }
 
                     if !outlineItems.isEmpty {
                         ExplorerSectionHeader(title: "구조")
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 12)
                             .padding(.top, 8)
 
                         ForEach(outlineItems) { item in
@@ -103,7 +103,7 @@ struct ProjectSidebarView: View {
                                 )
                             }
                             .buttonStyle(.plain)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 12)
                             .foregroundStyle(.primary)
                         }
                     }
@@ -185,9 +185,9 @@ struct ProjectSidebarView: View {
             .help("Refresh Explorer")
         }
         .buttonStyle(ExplorerIconButtonStyle())
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .padding(.top, 16)
-        .padding(.bottom, 12)
+        .padding(.bottom, 8)
     }
 
     private func outlineIconName(for command: String) -> String {
@@ -731,7 +731,7 @@ private struct ExplorerNodeRow: View {
     }
 
     private var rowLabel: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             ExplorerSaveStateDot(state: saveState(for: node.url))
 
             Image(systemName: node.iconName)
@@ -762,8 +762,8 @@ private struct ExplorerNodeRow: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .background(rowBackground)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -891,7 +891,7 @@ private struct ExplorerMetadataRow: View {
     var accessory: String?
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: iconName)
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(ExplorerStyle.fileIcon)
@@ -911,8 +911,8 @@ private struct ExplorerMetadataRow: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 }
 
@@ -1058,7 +1058,7 @@ private struct PendingCreationRow: View {
     var cancel: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: isDirectory ? "folder.badge.plus" : "doc.badge.plus")
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(isDirectory ? ExplorerStyle.folderIcon : ExplorerStyle.fileIcon)
@@ -1074,8 +1074,8 @@ private struct PendingCreationRow: View {
 
             Spacer()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(ExplorerStyle.selectedFill)
@@ -1254,7 +1254,7 @@ private struct FileTreeHeader: View {
     var saveState: ExplorerSaveState
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             ExplorerSaveStateDot(state: saveState)
 
             Image(systemName: "folder")
@@ -1268,7 +1268,7 @@ private struct FileTreeHeader: View {
                 .lineLimit(1)
             Spacer()
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
     }
 }
 

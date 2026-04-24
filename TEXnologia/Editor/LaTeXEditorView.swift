@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 private enum EditorLayout {
-    static let lineNumberGutterWidth: CGFloat = 88
-    static let lineNumberSeparatorPadding: CGFloat = 18
-    static let textInset = NSSize(width: 36, height: 12)
-    static let lineFragmentPadding: CGFloat = 4
+    static let lineNumberGutterWidth: CGFloat = 68
+    static let lineNumberSeparatorPadding: CGFloat = 12
+    static let textInset = NSSize(width: 24, height: 12)
+    static let lineFragmentPadding: CGFloat = 2
 }
 
 struct LaTeXEditorView: NSViewRepresentable {
