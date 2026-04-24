@@ -180,6 +180,7 @@ private struct CompileOptionsControl: View {
     var canCompile: Bool
     var compile: () -> Void
     var persistSettings: () -> Void
+    @State private var showsCompileSettings = false
     private let compileBlue = Color(red: 0.20, green: 0.36, blue: 0.58)
 
     var body: some View {
@@ -200,33 +201,8 @@ private struct CompileOptionsControl: View {
                 .fill(Color.white.opacity(canCompile ? 0.30 : 0.08))
                 .frame(width: 1, height: 16)
 
-            Menu {
-                Text(currentSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Divider()
-
-                Section("Engine") {
-                    ForEach(LatexEngine.allCases, id: \.self) { engine in
-                        Button {
-                            settings.defaultEngine = engine
-                            persistSettings()
-                        } label: {
-                            menuRow(title: engine.displayName, isSelected: settings.defaultEngine == engine)
-                        }
-                    }
-                }
-
-                Section("TeX Live Year") {
-                    ForEach(TexToolchainYear.allCases, id: \.self) { year in
-                        Button {
-                            settings.toolchainYear = year
-                            persistSettings()
-                        } label: {
-                            menuRow(title: year.displayName, isSelected: settings.toolchainYear == year)
-                        }
-                    }
-                }
+            Button {
+                showsCompileSettings.toggle()
             } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
@@ -234,9 +210,15 @@ private struct CompileOptionsControl: View {
                     .frame(width: 26, height: 24)
                     .background(canCompile ? compileBlue : Color.secondary.opacity(0.14))
             }
-            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
             .help("Compile Settings")
             .accessibilityLabel("Compile Settings")
+            .popover(isPresented: $showsCompileSettings, arrowEdge: .top) {
+                CompileSettingsPopover(
+                    settings: $settings,
+                    persistSettings: persistSettings
+                )
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .frame(width: 109)
@@ -250,15 +232,69 @@ private struct CompileOptionsControl: View {
     private var compileHelpText: String {
         "Compile with \(settings.defaultEngine.displayName), TeX Live \(settings.toolchainYear.displayName)"
     }
+}
 
-    private func menuRow(title: String, isSelected: Bool) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            if isSelected {
-                Image(systemName: "checkmark")
+private struct CompileSettingsPopover: View {
+    @Binding var settings: AppSettings
+    var persistSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("\(settings.defaultEngine.displayName) · TeX Live \(settings.toolchainYear.displayName)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Engine")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(LatexEngine.allCases, id: \.self) { engine in
+                    optionButton(
+                        title: engine.displayName,
+                        isSelected: settings.defaultEngine == engine
+                    ) {
+                        settings.defaultEngine = engine
+                        persistSettings()
+                    }
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("TeX Live Year")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(TexToolchainYear.allCases, id: \.self) { year in
+                    optionButton(
+                        title: year.displayName,
+                        isSelected: settings.toolchainYear == year
+                    ) {
+                        settings.toolchainYear = year
+                        persistSettings()
+                    }
+                }
             }
         }
+        .padding(12)
+        .frame(width: 190)
+    }
+
+    private func optionButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
