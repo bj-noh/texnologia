@@ -93,6 +93,10 @@ if grep -q 'untitled.tex' "$ROOT_DIR/TEXnologia/ProjectIndexing/ProjectSidebarVi
 fi
 require_pattern "TEXnologia/App/AppModel.swift" "saveSelectedFileAndBuildIfNeeded" "command-s compile on save"
 require_pattern "TEXnologia/App/TEXnologiaApp.swift" "Save and Compile" "save menu compile wording"
+require_pattern "TEXnologia/App/AppModel.swift" "isEditorSaved" "editor saved-state model"
+require_pattern "TEXnologia/App/AppModel.swift" "markEditorClean(fileURL: editorFileURL, text: editorText)" "save marks editor clean"
+require_pattern "TEXnologia/App/MainWindowView.swift" "EditorStatusHeader" "editor saved-state header"
+require_pattern "TEXnologia/App/MainWindowView.swift" "checkmark.square.fill" "saved check indicator"
 require_pattern "TEXnologia/App/MainWindowView.swift" "appModel.openProjectPanel" "welcome/menu open action remains"
 if grep -q 'Label("Open"' "$ROOT_DIR/TEXnologia/App/MainWindowView.swift"; then
   echo "FAIL toolbar Open button should not be present" >&2

@@ -22,6 +22,8 @@ final class AppModel: ObservableObject {
     @Published var statusMessage: String = "Drop a LaTeX folder, .tex file, or .zip archive to begin."
     @Published var isImporting: Bool = false
     @Published var history: [HistoryEntry] = []
+    @Published private var savedEditorFileURL: URL?
+    @Published private var savedEditorText: String = ""
 
     private let indexer = ProjectIndexer()
     private let buildService = LatexBuildService()
@@ -29,6 +31,11 @@ final class AppModel: ObservableObject {
 
     var canExportFocusedPDF: Bool {
         focusedPDFURL != nil
+    }
+
+    var isEditorSaved: Bool {
+        guard selectedFilePresentation == .text, let editorFileURL else { return false }
+        return savedEditorFileURL == editorFileURL && savedEditorText == editorText
     }
 
     init() {
@@ -116,6 +123,7 @@ final class AppModel: ObservableObject {
         guard let selectedFileURL else {
             editorFileURL = nil
             editorText = ""
+            markEditorClean(fileURL: nil, text: "")
             selectedFilePresentation = .none
             return
         }
@@ -149,6 +157,7 @@ final class AppModel: ObservableObject {
 
             editorFileURL = nil
             editorText = ""
+            markEditorClean(fileURL: nil, text: "")
             selectedFilePresentation = presentation
             showInFocusedPreview(presentation)
             statusMessage = "Selected \(selectedFileURL.lastPathComponent)."
@@ -163,12 +172,14 @@ final class AppModel: ObservableObject {
                 : loaded.text
             selectedFileEncoding = loaded.encoding
             selectedFilePresentation = .text
+            markEditorClean(fileURL: selectedFileURL, text: editorText)
             statusMessage = "Opened \(selectedFileURL.lastPathComponent)."
         } catch TextFileLoader.LoadError.fileTooLarge {
             loadReadOnlyPreview(for: selectedFileURL)
         } catch {
             editorFileURL = nil
             editorText = ""
+            markEditorClean(fileURL: nil, text: "")
             selectedFilePresentation = .external(selectedFileURL)
             statusMessage = "Could not read \(selectedFileURL.lastPathComponent): \(error.localizedDescription)"
         }
@@ -202,6 +213,7 @@ final class AppModel: ObservableObject {
             selectedFileURL = nil
             editorFileURL = nil
             editorText = ""
+            markEditorClean(fileURL: nil, text: "")
             selectedFilePresentation = .none
             buildIssues = []
             pdfDocumentURL = nil
@@ -294,6 +306,7 @@ final class AppModel: ObservableObject {
         do {
             captureHistorySnapshot(reason: "Before save")
             try editorText.write(to: editorFileURL, atomically: true, encoding: selectedFileEncoding)
+            markEditorClean(fileURL: editorFileURL, text: editorText)
             statusMessage = "Saved \(editorFileURL.lastPathComponent)."
         } catch {
             statusMessage = "Could not save \(editorFileURL.lastPathComponent): \(error.localizedDescription)"
@@ -330,12 +343,14 @@ final class AppModel: ObservableObject {
             let preview = try TextFileLoader.loadPreview(url: url)
             editorFileURL = nil
             editorText = ""
+            markEditorClean(fileURL: nil, text: "")
             selectedFilePresentation = .readOnlyText(preview)
             let prefix = preview.isTruncated ? "Previewing" : "Opened"
             statusMessage = "\(prefix) \(url.lastPathComponent) read-only."
         } catch {
             editorFileURL = nil
             editorText = ""
+            markEditorClean(fileURL: nil, text: "")
             selectedFilePresentation = .external(url)
             statusMessage = "Could not preview \(url.lastPathComponent): \(error.localizedDescription)"
         }
@@ -429,6 +444,7 @@ final class AppModel: ObservableObject {
                 : loaded.text
             selectedFileEncoding = loaded.encoding
             selectedFilePresentation = .text
+            markEditorClean(fileURL: mainFileURL, text: editorText)
         } catch {
             // Keep the current editor state; preview selection should never blank the editor.
         }
@@ -471,6 +487,11 @@ final class AppModel: ObservableObject {
         } else {
             sessions.append(session)
         }
+    }
+
+    private func markEditorClean(fileURL: URL?, text: String) {
+        savedEditorFileURL = fileURL
+        savedEditorText = text
     }
 
     private func importZipArchive(at zipURL: URL) {

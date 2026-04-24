@@ -77,6 +77,7 @@ struct MainWindowView: View {
                     presentation: appModel.selectedFilePresentation,
                     selectedFileURL: appModel.selectedFileURL,
                     editorFileURL: appModel.editorFileURL,
+                    isEditorSaved: appModel.isEditorSaved,
                     text: $appModel.editorText,
                     settings: appModel.settings,
                     jump: appModel.editorJump
@@ -358,6 +359,7 @@ private struct CenterPaneView: View {
     var presentation: FilePresentation
     var selectedFileURL: URL?
     var editorFileURL: URL?
+    var isEditorSaved: Bool
     @Binding var text: String
     var settings: AppSettings
     var jump: EditorJump?
@@ -366,12 +368,19 @@ private struct CenterPaneView: View {
         Group {
             switch presentation {
             case .text:
-                LaTeXEditorView(
-                    text: $text,
-                    settings: settings,
-                    syntaxMode: editorFileURL?.editorSyntaxMode ?? .plain,
-                    jump: jump
-                )
+                VStack(spacing: 0) {
+                    EditorStatusHeader(
+                        fileURL: editorFileURL,
+                        isSaved: isEditorSaved
+                    )
+
+                    LaTeXEditorView(
+                        text: $text,
+                        settings: settings,
+                        syntaxMode: editorFileURL?.editorSyntaxMode ?? .plain,
+                        jump: jump
+                    )
+                }
             case .readOnlyText(let preview):
                 ReadOnlyTextPreviewPane(preview: preview)
             case .pdf(let url):
@@ -396,6 +405,38 @@ private struct CenterPaneView: View {
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .fixedSize(horizontal: false, vertical: false)
+    }
+}
+
+private struct EditorStatusHeader: View {
+    var fileURL: URL?
+    var isSaved: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(fileURL?.lastPathComponent ?? "Untitled")
+                .font(.caption)
+                .lineLimit(1)
+
+            if isSaved {
+                Image(systemName: "checkmark.square.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.green)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                    .help("Saved")
+                    .accessibilityLabel("Saved")
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(.bar)
+        .animation(.easeInOut(duration: 0.12), value: isSaved)
     }
 }
 
