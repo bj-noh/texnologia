@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
     @Published var workspace: Workspace?
     @Published var sessions: [WorkspaceSession] = []
     @Published var selectedFileURL: URL?
+    @Published var editorFileURL: URL?
     @Published var editorText: String = ""
     @Published var selectedFilePresentation: FilePresentation = .none
     @Published var projectIndex: ProjectIndex = .empty
@@ -103,6 +104,7 @@ final class AppModel: ObservableObject {
         projectIndex = nextIndex
         upsertSession(workspace: nextWorkspace, index: nextIndex)
         selectedFileURL = detectedRoot
+        editorFileURL = detectedRoot
         selectedFilePresentation = detectedRoot == nil ? .none : .text
         loadSelectedFile()
         statusMessage = detectedRoot == nil
@@ -112,6 +114,7 @@ final class AppModel: ObservableObject {
 
     func loadSelectedFile() {
         guard let selectedFileURL else {
+            editorFileURL = nil
             editorText = ""
             selectedFilePresentation = .none
             return
@@ -131,25 +134,30 @@ final class AppModel: ObservableObject {
         guard selectedFileURL.isEditableTextFile else {
             let presentation = selectedFileURL.presentation
             if case .image = presentation {
+                prepareEditorForPreviewSelection()
                 showInFocusedPreview(presentation)
-                statusMessage = "Previewing \(selectedFileURL.lastPathComponent)."
+                statusMessage = "Previewing \(selectedFileURL.lastPathComponent). Editor kept \(editorFileURL?.lastPathComponent ?? "current source")."
+                return
+            }
+            if case .pdf(let url) = presentation {
+                prepareEditorForPreviewSelection()
+                pdfDocumentURL = url
+                showInFocusedPreview(presentation)
+                statusMessage = "Opened \(url.lastPathComponent) in the focused preview pane. Editor kept \(editorFileURL?.lastPathComponent ?? "current source")."
                 return
             }
 
+            editorFileURL = nil
             editorText = ""
             selectedFilePresentation = presentation
             showInFocusedPreview(presentation)
-            if case .pdf(let url) = presentation {
-                pdfDocumentURL = url
-                statusMessage = "Opened \(url.lastPathComponent) in the PDF viewer."
-            } else {
-                statusMessage = "Selected \(selectedFileURL.lastPathComponent)."
-            }
+            statusMessage = "Selected \(selectedFileURL.lastPathComponent)."
             return
         }
 
         do {
             let loaded = try TextFileLoader.loadEditable(url: selectedFileURL)
+            editorFileURL = selectedFileURL
             editorText = selectedFileURL.pathExtension.lowercased() == "json"
                 ? TextFileLoader.prettyPrintedJSONIfPossible(loaded.text)
                 : loaded.text
@@ -159,6 +167,7 @@ final class AppModel: ObservableObject {
         } catch TextFileLoader.LoadError.fileTooLarge {
             loadReadOnlyPreview(for: selectedFileURL)
         } catch {
+            editorFileURL = nil
             editorText = ""
             selectedFilePresentation = .external(selectedFileURL)
             statusMessage = "Could not read \(selectedFileURL.lastPathComponent): \(error.localizedDescription)"
@@ -191,6 +200,7 @@ final class AppModel: ObservableObject {
             workspace = nil
             projectIndex = .empty
             selectedFileURL = nil
+            editorFileURL = nil
             editorText = ""
             selectedFilePresentation = .none
             buildIssues = []
@@ -206,6 +216,7 @@ final class AppModel: ObservableObject {
         workspace = nextSession.workspace
         projectIndex = nextSession.index
         selectedFileURL = nextSession.workspace.mainFileURL
+        editorFileURL = nextSession.workspace.mainFileURL
         selectedFilePresentation = selectedFileURL == nil ? .none : .text
         loadSelectedFile()
         statusMessage = "Closed \(closedSession.workspace.displayName) session."
@@ -224,6 +235,7 @@ final class AppModel: ObservableObject {
         }
 
         selectedFileURL = location.fileURL
+        editorFileURL = location.fileURL
         selectedFilePresentation = .text
         loadSelectedFile()
         editorJump = EditorJump(location: location)
@@ -246,6 +258,8 @@ final class AppModel: ObservableObject {
             selectedFileURL = preferredSelection
         } else if let selectedFileURL, fileManager.fileExists(atPath: selectedFileURL.path) {
             self.selectedFileURL = selectedFileURL
+        } else if let editorFileURL, fileManager.fileExists(atPath: editorFileURL.path) {
+            selectedFileURL = editorFileURL
         } else {
             selectedFileURL = mainFile
         }
@@ -258,14 +272,14 @@ final class AppModel: ObservableObject {
     }
 
     func saveSelectedFile() {
-        guard let selectedFileURL else { return }
+        guard let editorFileURL else { return }
         guard selectedFilePresentation == .text else { return }
         do {
             captureHistorySnapshot(reason: "Before save")
-            try editorText.write(to: selectedFileURL, atomically: true, encoding: selectedFileEncoding)
-            statusMessage = "Saved \(selectedFileURL.lastPathComponent)."
+            try editorText.write(to: editorFileURL, atomically: true, encoding: selectedFileEncoding)
+            statusMessage = "Saved \(editorFileURL.lastPathComponent)."
         } catch {
-            statusMessage = "Could not save \(selectedFileURL.lastPathComponent): \(error.localizedDescription)"
+            statusMessage = "Could not save \(editorFileURL.lastPathComponent): \(error.localizedDescription)"
         }
     }
 
@@ -286,6 +300,7 @@ final class AppModel: ObservableObject {
 
     func restoreHistoryEntry(_ entry: HistoryEntry) {
         selectedFileURL = entry.fileURL
+        editorFileURL = entry.fileURL
         selectedFilePresentation = .text
         selectedFileEncoding = .utf8
         editorText = entry.text
@@ -296,11 +311,13 @@ final class AppModel: ObservableObject {
     private func loadReadOnlyPreview(for url: URL) {
         do {
             let preview = try TextFileLoader.loadPreview(url: url)
+            editorFileURL = nil
             editorText = ""
             selectedFilePresentation = .readOnlyText(preview)
             let prefix = preview.isTruncated ? "Previewing" : "Opened"
             statusMessage = "\(prefix) \(url.lastPathComponent) read-only."
         } catch {
+            editorFileURL = nil
             editorText = ""
             selectedFilePresentation = .external(url)
             statusMessage = "Could not preview \(url.lastPathComponent): \(error.localizedDescription)"
@@ -377,6 +394,29 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func prepareEditorForPreviewSelection() {
+        guard let workspace else { return }
+        if selectedFilePresentation == .text,
+           let editorFileURL,
+           editorFileURL.isInsideOrEqual(to: workspace.rootURL) {
+            return
+        }
+
+        guard let mainFileURL = workspace.mainFileURL, mainFileURL.isEditableTextFile else { return }
+
+        do {
+            let loaded = try TextFileLoader.loadEditable(url: mainFileURL)
+            editorFileURL = mainFileURL
+            editorText = mainFileURL.pathExtension.lowercased() == "json"
+                ? TextFileLoader.prettyPrintedJSONIfPossible(loaded.text)
+                : loaded.text
+            selectedFileEncoding = loaded.encoding
+            selectedFilePresentation = .text
+        } catch {
+            // Keep the current editor state; preview selection should never blank the editor.
+        }
+    }
+
     private var focusedPDFURL: URL? {
         let focusedPresentation: FilePresentation
         if focusedPreviewPane == .primary {
@@ -393,11 +433,11 @@ final class AppModel: ObservableObject {
     }
 
     private func captureHistorySnapshot(reason: String) {
-        guard let selectedFileURL, selectedFilePresentation == .text else { return }
-        guard history.first?.fileURL != selectedFileURL || history.first?.text != editorText else { return }
+        guard let editorFileURL, selectedFilePresentation == .text else { return }
+        guard history.first?.fileURL != editorFileURL || history.first?.text != editorText else { return }
         history.insert(HistoryEntry(
-            fileURL: selectedFileURL,
-            fileName: selectedFileURL.lastPathComponent,
+            fileURL: editorFileURL,
+            fileName: editorFileURL.lastPathComponent,
             text: editorText,
             createdAt: Date(),
             reason: reason
@@ -507,6 +547,10 @@ private extension UTType {
 }
 
 private extension URL {
+    func isInsideOrEqual(to rootURL: URL) -> Bool {
+        path == rootURL.path || path.hasPrefix(rootURL.path + "/")
+    }
+
     var isEditableTextFile: Bool {
         let editableExtensions: Set<String> = [
             "tex", "bib", "sty", "cls", "ltx",

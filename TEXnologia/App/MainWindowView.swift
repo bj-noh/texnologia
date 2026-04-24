@@ -75,6 +75,7 @@ struct MainWindowView: View {
                 CenterPaneView(
                     presentation: appModel.selectedFilePresentation,
                     selectedFileURL: appModel.selectedFileURL,
+                    editorFileURL: appModel.editorFileURL,
                     text: $appModel.editorText,
                     settings: appModel.settings,
                     jump: appModel.editorJump
@@ -355,6 +356,7 @@ private struct SessionTabBar: View {
 private struct CenterPaneView: View {
     var presentation: FilePresentation
     var selectedFileURL: URL?
+    var editorFileURL: URL?
     @Binding var text: String
     var settings: AppSettings
     var jump: EditorJump?
@@ -365,7 +367,7 @@ private struct CenterPaneView: View {
             LaTeXEditorView(
                 text: $text,
                 settings: settings,
-                syntaxMode: selectedFileURL?.editorSyntaxMode ?? .plain,
+                syntaxMode: editorFileURL?.editorSyntaxMode ?? .plain,
                 jump: jump
             )
         case .readOnlyText(let preview):
@@ -386,7 +388,7 @@ private struct CenterPaneView: View {
                 icon: "text.cursor",
                 title: "No source file selected",
                 message: "Choose a .tex, .bib, .sty, or .cls file from the explorer.",
-                fileURL: selectedFileURL
+                fileURL: editorFileURL ?? selectedFileURL
             )
         }
     }
@@ -610,19 +612,35 @@ private struct ImagePreviewPane: View {
     var fileURL: URL
 
     var body: some View {
-        VStack(spacing: 14) {
-            if let image = NSImage(contentsOf: fileURL) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .padding(20)
-            } else {
-                Image(systemName: "photo")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.secondary)
-                Text("Could not preview image.")
-                    .foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            GeometryReader { proxy in
+                ZStack {
+                    if let image = NSImage(contentsOf: fileURL) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(
+                                width: max(proxy.size.width - 40, 0),
+                                height: max(proxy.size.height - 40, 0)
+                            )
+                            .clipped()
+                    } else {
+                        VStack(spacing: 10) {
+                            Image(systemName: "photo")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.secondary)
+                            Text("Could not preview image.")
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(
+                            width: max(proxy.size.width - 40, 0),
+                            height: max(proxy.size.height - 40, 0)
+                        )
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
 
             HStack {
                 Button("Open Externally") {
@@ -632,9 +650,12 @@ private struct ImagePreviewPane: View {
                     NSWorkspace.shared.activateFileViewerSelecting([fileURL])
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(.bar)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .fixedSize(horizontal: false, vertical: false)
         .background(Color(nsColor: .textBackgroundColor))
     }
 }
