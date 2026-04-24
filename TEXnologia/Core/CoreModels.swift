@@ -44,9 +44,22 @@ struct EditorJump: Identifiable, Equatable {
     var location: TextLocation
 }
 
+struct TextFilePreview: Equatable {
+    var fileURL: URL
+    var text: String
+    var byteCount: Int
+    var previewedByteCount: Int
+    var encodingDescription: String
+
+    var isTruncated: Bool {
+        previewedByteCount < byteCount
+    }
+}
+
 enum FilePresentation: Equatable {
     case none
     case text
+    case readOnlyText(TextFilePreview)
     case pdf(URL)
     case image(URL)
     case external(URL)

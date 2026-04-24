@@ -18,6 +18,7 @@ The current implementation is a Swift Package app using SwiftUI, AppKit, `NSText
 - Project explorer with rename, delete-to-trash confirmation, drag/drop, new file/folder, refresh, and Finder reveal
 - PDF preview via PDFKit
 - Image, PDF, JSON, source, and unknown-file routing so binary files are not opened as text
+- Read-only, bounded previews for generated LaTeX text files such as `.log`, `.out`, `.aux`, and `.fls`
 - Local LaTeX build through `latexmk` when available, with direct engine fallback
 - `pdflatex`, `xelatex`, and `lualatex` support
 - Build cancellation-safe process wrapper and issue parsing
@@ -136,6 +137,7 @@ Run the core checks:
 ```bash
 swift build
 scripts/verify_feature_contracts.sh
+scripts/verify_file_routing.sh
 scripts/verify_editor_wrapping.sh
 scripts/verify_app_icon_dimensions.sh
 ```
@@ -201,4 +203,3 @@ Tests/Fixtures/         # LaTeX regression fixtures
 ## Notes
 
 This project is independent and does not copy the branding, UI design, icons, proprietary names, or proprietary implementation of any existing LaTeX editor. It references the broad functional category of professional LaTeX writing tools while defining its own product direction and implementation.
-

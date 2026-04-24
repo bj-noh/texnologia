@@ -15,12 +15,19 @@ require_pattern() {
 }
 
 require_pattern "TEXnologia/App/AppModel.swift" "isEditableTextFile" "text file routing"
+require_pattern "TEXnologia/App/AppModel.swift" "isGeneratedTextPreviewFile" "generated file preview routing"
+require_pattern "TEXnologia/App/AppModel.swift" "loadReadOnlyPreview" "read-only generated file preview"
+require_pattern "TEXnologia/App/AppModel.swift" "maxEditableBytes" "large editable file guard"
+require_pattern "TEXnologia/App/AppModel.swift" '"sty"' "sty remains editable"
+require_pattern "TEXnologia/App/AppModel.swift" '"log", "aux", "bbl", "blg", "toc", "out", "fls"' "generated extensions are preview-only"
 require_pattern "TEXnologia/App/AppModel.swift" '"json"' "JSON routing"
 require_pattern "TEXnologia/App/AppModel.swift" "prettyPrintedJSONIfPossible" "JSON pretty print"
 require_pattern "TEXnologia/App/AppModel.swift" "case \"pdf\"" "PDF routing"
 require_pattern "TEXnologia/App/AppModel.swift" "case \"png\", \"jpg\", \"jpeg\"" "image routing"
 
 require_pattern "TEXnologia/App/MainWindowView.swift" "CenterPaneView" "center pane dispatcher"
+require_pattern "TEXnologia/App/MainWindowView.swift" "ReadOnlyTextPreviewPane" "read-only text preview pane"
+require_pattern "TEXnologia/App/MainWindowView.swift" "doc.text.magnifyingglass" "generated text preview icon"
 require_pattern "TEXnologia/App/MainWindowView.swift" "PDFPaneView(documentURL: url)" "center PDF rendering"
 require_pattern "TEXnologia/App/MainWindowView.swift" "ImagePreviewPane" "image preview pane"
 require_pattern "TEXnologia/App/MainWindowView.swift" "Open Externally" "external open action"

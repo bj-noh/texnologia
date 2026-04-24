@@ -161,6 +161,8 @@ private struct CenterPaneView: View {
         switch presentation {
         case .text:
             LaTeXEditorView(text: $text, settings: settings, jump: jump)
+        case .readOnlyText(let preview):
+            ReadOnlyTextPreviewPane(preview: preview)
         case .pdf(let url):
             PDFPaneView(documentURL: url)
         case .image(let url):
@@ -180,6 +182,60 @@ private struct CenterPaneView: View {
                 fileURL: selectedFileURL
             )
         }
+    }
+}
+
+private struct ReadOnlyTextPreviewPane: View {
+    var preview: TextFilePreview
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(preview.fileURL.lastPathComponent)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(preview.isTruncated ? .orange : .secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Button("Open Externally") {
+                    NSWorkspace.shared.open(preview.fileURL)
+                }
+
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([preview.fileURL])
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.bar)
+
+            ScrollView([.vertical]) {
+                Text(preview.text)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(14)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+        }
+    }
+
+    private var summary: String {
+        let total = ByteCountFormatter.string(fromByteCount: Int64(preview.byteCount), countStyle: .file)
+        let shown = ByteCountFormatter.string(fromByteCount: Int64(preview.previewedByteCount), countStyle: .file)
+        if preview.isTruncated {
+            return "Read-only preview, \(shown) of \(total), \(preview.encodingDescription)"
+        }
+        return "Read-only, \(total), \(preview.encodingDescription)"
     }
 }
 

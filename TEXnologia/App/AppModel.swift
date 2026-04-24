@@ -109,6 +109,11 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if selectedFileURL.isGeneratedTextPreviewFile {
+            loadReadOnlyPreview(for: selectedFileURL)
+            return
+        }
+
         guard selectedFileURL.isEditableTextFile else {
             editorText = ""
             selectedFilePresentation = selectedFileURL.presentation
@@ -122,13 +127,15 @@ final class AppModel: ObservableObject {
         }
 
         do {
-            let loaded = try TextFileLoader.load(url: selectedFileURL)
+            let loaded = try TextFileLoader.loadEditable(url: selectedFileURL)
             editorText = selectedFileURL.pathExtension.lowercased() == "json"
                 ? TextFileLoader.prettyPrintedJSONIfPossible(loaded.text)
                 : loaded.text
             selectedFileEncoding = loaded.encoding
             selectedFilePresentation = .text
             statusMessage = "Opened \(selectedFileURL.lastPathComponent)."
+        } catch TextFileLoader.LoadError.fileTooLarge {
+            loadReadOnlyPreview(for: selectedFileURL)
         } catch {
             editorText = ""
             selectedFilePresentation = .external(selectedFileURL)
@@ -188,6 +195,20 @@ final class AppModel: ObservableObject {
             statusMessage = "Saved \(selectedFileURL.lastPathComponent)."
         } catch {
             statusMessage = "Could not save \(selectedFileURL.lastPathComponent): \(error.localizedDescription)"
+        }
+    }
+
+    private func loadReadOnlyPreview(for url: URL) {
+        do {
+            let preview = try TextFileLoader.loadPreview(url: url)
+            editorText = ""
+            selectedFilePresentation = .readOnlyText(preview)
+            let prefix = preview.isTruncated ? "Previewing" : "Opened"
+            statusMessage = "\(prefix) \(url.lastPathComponent) read-only."
+        } catch {
+            editorText = ""
+            selectedFilePresentation = .external(url)
+            statusMessage = "Could not preview \(url.lastPathComponent): \(error.localizedDescription)"
         }
     }
 
@@ -317,10 +338,16 @@ private extension URL {
             "swift", "m", "mm", "h", "hpp", "c", "cc", "cpp", "cxx",
             "js", "jsx", "ts", "tsx", "css", "scss", "html", "htm",
             "py", "rb", "go", "rs", "java", "kt", "kts",
-            "sh", "bash", "zsh", "fish", "env",
-            "log", "aux", "bbl", "blg", "toc", "out", "fls"
+            "sh", "bash", "zsh", "fish", "env"
         ]
         return editableExtensions.contains(pathExtension.lowercased())
+    }
+
+    var isGeneratedTextPreviewFile: Bool {
+        let previewExtensions: Set<String> = [
+            "log", "aux", "bbl", "blg", "toc", "out", "fls", "fdb_latexmk"
+        ]
+        return previewExtensions.contains(pathExtension.lowercased())
     }
 
     var presentation: FilePresentation {
@@ -371,10 +398,60 @@ private enum SettingsStore {
 }
 
 private enum TextFileLoader {
-    static func load(url: URL) throws -> (text: String, encoding: String.Encoding) {
+    enum LoadError: LocalizedError {
+        case fileTooLarge(byteCount: Int)
+        case unsupportedTextEncoding
+
+        var errorDescription: String? {
+            switch self {
+            case .fileTooLarge(let byteCount):
+                return "The file is too large to edit safely (\(Self.formatBytes(byteCount)))."
+            case .unsupportedTextEncoding:
+                return "Unsupported text encoding."
+            }
+        }
+
+        private static func formatBytes(_ byteCount: Int) -> String {
+            ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file)
+        }
+    }
+
+    private static let maxEditableBytes = 2_000_000
+    private static let maxPreviewBytes = 600_000
+
+    static func loadEditable(url: URL) throws -> (text: String, encoding: String.Encoding) {
+        let byteCount = fileSize(url: url)
+        if byteCount > maxEditableBytes {
+            throw LoadError.fileTooLarge(byteCount: byteCount)
+        }
+
         let data = try Data(contentsOf: url)
         if data.isEmpty {
             return ("", .utf8)
+        }
+
+        return try decode(data)
+    }
+
+    static func loadPreview(url: URL) throws -> TextFilePreview {
+        let byteCount = fileSize(url: url)
+        let previewedByteCount = min(byteCount, maxPreviewBytes)
+        let data = try readPrefix(url: url, byteCount: previewedByteCount)
+        let decoded = try decode(data)
+        let text = decoded.text + (previewedByteCount < byteCount ? "\n\n--- Preview truncated at \(formatBytes(previewedByteCount)) of \(formatBytes(byteCount)). Open externally to inspect the full file. ---\n" : "")
+
+        return TextFilePreview(
+            fileURL: url,
+            text: text,
+            byteCount: byteCount,
+            previewedByteCount: previewedByteCount,
+            encodingDescription: encodingDescription(decoded.encoding)
+        )
+    }
+
+    private static func decode(_ data: Data) throws -> (text: String, encoding: String.Encoding) {
+        guard !looksBinary(data) else {
+            throw LoadError.unsupportedTextEncoding
         }
 
         for encoding in candidateEncodings {
@@ -383,11 +460,50 @@ private enum TextFileLoader {
             }
         }
 
-        throw NSError(
-            domain: "TEXnologia.TextFileLoader",
-            code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Unsupported text encoding."]
-        )
+        if let text = String(data: data, encoding: .utf8) {
+            return (text, .utf8)
+        }
+
+        throw LoadError.unsupportedTextEncoding
+    }
+
+    private static func readPrefix(url: URL, byteCount: Int) throws -> Data {
+        guard byteCount > 0 else { return Data() }
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        if #available(macOS 10.15.4, *) {
+            return try handle.read(upToCount: byteCount) ?? Data()
+        }
+
+        return handle.readData(ofLength: byteCount)
+    }
+
+    private static func fileSize(url: URL) -> Int {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+        return values?.fileSize ?? 0
+    }
+
+    private static func looksBinary(_ data: Data) -> Bool {
+        guard !data.isEmpty else { return false }
+        return data.prefix(min(data.count, 4096)).contains(0)
+    }
+
+    private static func formatBytes(_ byteCount: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file)
+    }
+
+    private static func encodingDescription(_ encoding: String.Encoding) -> String {
+        switch encoding {
+        case .utf8: return "UTF-8"
+        case .utf16: return "UTF-16"
+        case .utf16LittleEndian: return "UTF-16 LE"
+        case .utf16BigEndian: return "UTF-16 BE"
+        case .isoLatin1: return "ISO Latin 1"
+        case .windowsCP1252: return "Windows CP1252"
+        case .macOSRoman: return "Mac OS Roman"
+        default: return "Text"
+        }
     }
 
     static func prettyPrintedJSONIfPossible(_ text: String) -> String {
