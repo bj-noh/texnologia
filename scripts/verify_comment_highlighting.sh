@@ -14,8 +14,8 @@ require_pattern() {
   fi
 }
 
-require_pattern "applyLatexTokens" "LaTeX token application pipeline"
-require_pattern "applyBibTokens" "BibTeX token application pipeline"
+require_pattern "appendLatexOps" "LaTeX token application pipeline"
+require_pattern "appendBibOps" "BibTeX token application pipeline"
 require_pattern "applyCommentTokensLast" "comments are applied after command/keyword tokens"
 require_pattern "overlapsCommentRange" "tokens inside comments are skipped"
 require_pattern "NSIntersectionRange" "comment range intersection check"

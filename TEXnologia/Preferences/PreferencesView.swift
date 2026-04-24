@@ -20,9 +20,14 @@ struct PreferencesView: View {
                 .tabItem {
                     Label("Compile", systemImage: "hammer")
                 }
+
+            aiPane
+                .tabItem {
+                    Label("AI", systemImage: "sparkles")
+                }
         }
         .padding()
-        .frame(width: 520, height: 420)
+        .frame(width: 540, height: 460)
     }
 
     private var generalPane: some View {
@@ -94,6 +99,54 @@ struct PreferencesView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private var aiPane: some View {
+        Form {
+            Picker("Provider", selection: $settings.llm.provider) {
+                ForEach(LLMProvider.allCases) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
+            .onChange(of: settings.llm.provider) { _, newValue in
+                if settings.llm.model.isEmpty || LLMProvider.allCases.contains(where: { $0.defaultModel == settings.llm.model }) {
+                    settings.llm.model = newValue.defaultModel
+                }
+            }
+
+            TextField("Model", text: $settings.llm.model)
+                .textFieldStyle(.roundedBorder)
+
+            SecureField("API Key", text: $settings.llm.apiKey)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Stepper(value: $settings.llm.maxTokens, in: 256...8192, step: 256) {
+                    Text("Max Tokens: \(settings.llm.maxTokens)")
+                }
+            }
+
+            Text(providerHint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if !settings.llm.isConfigured {
+                Label("API key is required before the AI Assistant can respond.", systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+
+    private var providerHint: String {
+        switch settings.llm.provider {
+        case .anthropic:
+            return "Anthropic API key starts with sk-ant-. Keys are stored locally in app settings."
+        case .openai:
+            return "OpenAI API key starts with sk-. Keys are stored locally in app settings."
+        }
     }
 
     private static var monospacedFontNames: [String] {

@@ -30,3 +30,13 @@ DerivedData/
 # Local editor state
 *.xcuserstate
 *.xcuserdata/
+
+# Not published to GitHub
+Tests/
+docs/
+
+# Fixture-dependent scripts are kept locally only
+scripts/smoke_latex_build.sh
+scripts/verify_bib_highlighting.sh
+scripts/verify_file_routing.sh
+scripts/verify_windows_port_readiness.sh

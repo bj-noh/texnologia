@@ -157,7 +157,7 @@ struct ProjectSidebarView: View {
     private var explorerHeader: some View {
         HStack(spacing: 12) {
             Text("프로젝트")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ExplorerStyle.mutedText)
 
             Spacer()
@@ -735,9 +735,9 @@ private struct ExplorerNodeRow: View {
             ExplorerSaveStateDot(state: saveState(for: node.url))
 
             Image(systemName: node.iconName)
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(node.isDirectory ? ExplorerStyle.folderIcon : ExplorerStyle.fileIcon)
-                .frame(width: 18)
+                .frame(width: 14)
 
             if renamingURL == node.url {
                 InlineRenameTextField(
@@ -749,21 +749,21 @@ private struct ExplorerNodeRow: View {
                 .frame(minWidth: 72, maxWidth: .infinity)
             } else {
                 Text(node.url.lastPathComponent)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 11, weight: .regular))
                     .foregroundStyle(ExplorerStyle.primaryText)
                     .lineLimit(1)
             }
 
             if node.url == mainFileURL {
                 Image(systemName: "star.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(ExplorerStyle.accent)
                     .help("Main file")
             }
             Spacer()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .background(rowBackground)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -847,8 +847,8 @@ private struct ExplorerSaveStateDot: View {
     var body: some View {
         Circle()
             .fill(color)
-            .frame(width: 7, height: 7)
-            .frame(width: 12)
+            .frame(width: 6, height: 6)
+            .frame(width: 10)
             .help(helpText)
     }
 
@@ -877,7 +877,7 @@ private struct ExplorerSectionHeader: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(ExplorerStyle.mutedText)
             Spacer()
         }
@@ -891,28 +891,28 @@ private struct ExplorerMetadataRow: View {
     var accessory: String?
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Image(systemName: iconName)
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: 10, weight: .regular))
                 .foregroundStyle(ExplorerStyle.fileIcon)
-                .frame(width: 18)
+                .frame(width: 14)
 
             Text(title)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(ExplorerStyle.primaryText)
                 .lineLimit(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
 
             if let accessory {
                 Text(accessory)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 10, weight: .regular))
                     .foregroundStyle(ExplorerStyle.mutedText)
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
     }
 }
 
@@ -920,15 +920,15 @@ private struct EmptyExplorerState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "folder")
-                .font(.system(size: 20, weight: .regular))
+                .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(ExplorerStyle.folderIcon)
 
             Text("프로젝트를 열어주세요")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ExplorerStyle.primaryText)
 
             Text("LaTeX 폴더, .tex 파일, 또는 .zip을 열면 여기에 표시됩니다.")
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(size: 10, weight: .regular))
                 .foregroundStyle(ExplorerStyle.mutedText)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -944,9 +944,9 @@ private struct EmptyExplorerState: View {
 private struct ExplorerIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .semibold))
+            .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(ExplorerStyle.iconButton)
-            .frame(width: 26, height: 26)
+            .frame(width: 22, height: 22)
             .background(
                 Circle()
                     .fill(configuration.isPressed ? ExplorerStyle.selectedFill : Color.clear)
@@ -1060,9 +1060,9 @@ private struct PendingCreationRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: isDirectory ? "folder.badge.plus" : "doc.badge.plus")
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(isDirectory ? ExplorerStyle.folderIcon : ExplorerStyle.fileIcon)
-                .frame(width: 18)
+                .frame(width: 14)
 
             InlineRenameTextField(
                 text: $draft,
@@ -1074,8 +1074,8 @@ private struct PendingCreationRow: View {
 
             Spacer()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(ExplorerStyle.selectedFill)
@@ -1258,17 +1258,17 @@ private struct FileTreeHeader: View {
             ExplorerSaveStateDot(state: saveState)
 
             Image(systemName: "folder")
-                .font(.system(size: 17, weight: .regular))
+                .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(ExplorerStyle.folderIcon)
-                .frame(width: 18)
+                .frame(width: 14)
 
             Text(rootURL.lastPathComponent)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ExplorerStyle.primaryText)
                 .lineLimit(1)
             Spacer()
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
     }
 }
 

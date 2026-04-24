@@ -94,6 +94,20 @@ final class BibTokenizer {
     }
 }
 
+struct HighlightPlan {
+    struct Op {
+        var range: NSRange
+        var attributes: [NSAttributedString.Key: Any]
+        var tooltip: String?
+    }
+
+    var baseAttributes: [NSAttributedString.Key: Any]
+    var baseRange: NSRange
+    var ops: [Op]
+    var spellExcludedRanges: [NSRange]
+    var textLength: Int
+}
+
 final class LatexSyntaxHighlighter {
     private let tokenizer = LatexTokenizer()
     private let bibTokenizer = BibTokenizer()
@@ -101,8 +115,13 @@ final class LatexSyntaxHighlighter {
 
     func apply(to textStorage: NSTextStorage?, text: String, settings: AppSettings, syntaxMode: EditorSyntaxMode = .latex) {
         guard let textStorage else { return }
+        let plan = computePlan(text: text, settings: settings, syntaxMode: syntaxMode)
+        apply(plan: plan, to: textStorage)
+    }
 
-        let fullRange = NSRange(location: 0, length: (text as NSString).length)
+    func computePlan(text: String, settings: AppSettings, syntaxMode: EditorSyntaxMode = .latex) -> HighlightPlan {
+        let nsLength = (text as NSString).length
+        let fullRange = NSRange(location: 0, length: nsLength)
         let font = NSFont(name: settings.editorFontName, size: settings.editorFontSize)
             ?? .monospacedSystemFont(ofSize: settings.editorFontSize, weight: .regular)
         let paragraphStyle = NSMutableParagraphStyle()
@@ -116,61 +135,90 @@ final class LatexSyntaxHighlighter {
             .paragraphStyle: paragraphStyle
         ]
 
-        textStorage.beginEditing()
-        textStorage.setAttributes(baseAttributes, range: fullRange)
+        var ops: [HighlightPlan.Op] = []
+        var spellRanges: [NSRange] = []
 
         if text.count <= maxHighlightedCharacters {
             switch syntaxMode {
             case .latex:
-                applyLatexTokens(tokenizer.tokenize(text), to: textStorage, palette: palette)
+                let tokens = tokenizer.tokenize(text)
+                appendLatexOps(tokens, palette: palette, into: &ops)
+                if settings.editorSpellChecking {
+                    spellRanges = latexSpellCheckExcludedRanges(in: text, tokens: tokens)
+                }
             case .bibtex:
-                applyBibTokens(bibTokenizer.tokenize(text), to: textStorage, palette: palette)
+                let tokens = bibTokenizer.tokenize(text)
+                appendBibOps(tokens, palette: palette, into: &ops)
+                if settings.editorSpellChecking {
+                    spellRanges = bibSpellCheckExcludedRanges(tokens: tokens)
+                }
             case .plain:
                 break
             }
 
             if settings.editorShowInvisibles {
-                applyInvisibleMarks(to: textStorage, text: text, font: font, palette: palette)
+                appendInvisibleOps(text: text, font: font, palette: palette, into: &ops)
             }
         }
 
+        return HighlightPlan(
+            baseAttributes: baseAttributes,
+            baseRange: fullRange,
+            ops: ops,
+            spellExcludedRanges: spellRanges,
+            textLength: nsLength
+        )
+    }
 
+    func apply(plan: HighlightPlan, to textStorage: NSTextStorage?) {
+        guard let textStorage, textStorage.length == plan.textLength else { return }
+
+        textStorage.beginEditing()
+        textStorage.setAttributes(plan.baseAttributes, range: plan.baseRange)
+        for op in plan.ops {
+            guard op.range.length > 0,
+                  NSMaxRange(op.range) <= plan.textLength else { continue }
+            textStorage.addAttributes(op.attributes, range: op.range)
+            if let tooltip = op.tooltip {
+                textStorage.addAttribute(.toolTip, value: tooltip, range: op.range)
+            }
+        }
         textStorage.endEditing()
     }
 
-    private func applyLatexTokens(_ tokens: [LatexToken], to textStorage: NSTextStorage, palette: EditorPalette) {
+    private func appendLatexOps(_ tokens: [LatexToken], palette: EditorPalette, into ops: inout [HighlightPlan.Op]) {
         let commentRanges = tokens
             .filter { $0.kind == .comment }
             .map(\.range)
 
         for token in tokens where token.kind != .comment && !overlapsCommentRange(token.range, commentRanges) {
-            textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
+            ops.append(HighlightPlan.Op(range: token.range, attributes: attributes(for: token.kind, palette: palette), tooltip: nil))
         }
 
-        applyCommentTokensLast(tokens, to: textStorage, palette: palette)
+        applyCommentTokensLast(tokens, into: &ops, palette: palette)
     }
 
-    private func applyBibTokens(_ tokens: [BibToken], to textStorage: NSTextStorage, palette: EditorPalette) {
+    private func appendBibOps(_ tokens: [BibToken], palette: EditorPalette, into ops: inout [HighlightPlan.Op]) {
         let commentRanges = tokens
             .filter { $0.kind == .comment }
             .map(\.range)
 
         for token in tokens where token.kind != .comment && !overlapsCommentRange(token.range, commentRanges) {
-            textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
+            ops.append(HighlightPlan.Op(range: token.range, attributes: attributes(for: token.kind, palette: palette), tooltip: nil))
         }
 
-        applyCommentTokensLast(tokens, to: textStorage, palette: palette)
+        applyCommentTokensLast(tokens, into: &ops, palette: palette)
     }
 
-    private func applyCommentTokensLast(_ tokens: [LatexToken], to textStorage: NSTextStorage, palette: EditorPalette) {
+    private func applyCommentTokensLast(_ tokens: [LatexToken], into ops: inout [HighlightPlan.Op], palette: EditorPalette) {
         for token in tokens where token.kind == .comment {
-            textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
+            ops.append(HighlightPlan.Op(range: token.range, attributes: attributes(for: token.kind, palette: palette), tooltip: nil))
         }
     }
 
-    private func applyCommentTokensLast(_ tokens: [BibToken], to textStorage: NSTextStorage, palette: EditorPalette) {
+    private func applyCommentTokensLast(_ tokens: [BibToken], into ops: inout [HighlightPlan.Op], palette: EditorPalette) {
         for token in tokens where token.kind == .comment {
-            textStorage.addAttributes(attributes(for: token.kind, palette: palette), range: token.range)
+            ops.append(HighlightPlan.Op(range: token.range, attributes: attributes(for: token.kind, palette: palette), tooltip: nil))
         }
     }
 
@@ -221,18 +269,18 @@ final class LatexSyntaxHighlighter {
     func spellCheckExcludedRanges(in text: String, syntaxMode: EditorSyntaxMode = .latex) -> [NSRange] {
         switch syntaxMode {
         case .latex:
-            return latexSpellCheckExcludedRanges(in: text)
+            return latexSpellCheckExcludedRanges(in: text, tokens: tokenizer.tokenize(text))
         case .bibtex:
-            return bibSpellCheckExcludedRanges(in: text)
+            return bibSpellCheckExcludedRanges(tokens: bibTokenizer.tokenize(text))
         case .plain:
             return []
         }
     }
 
-    private func latexSpellCheckExcludedRanges(in text: String) -> [NSRange] {
+    private func latexSpellCheckExcludedRanges(in text: String, tokens: [LatexToken]) -> [NSRange] {
         let nsText = text as NSString
         let fullRange = NSRange(location: 0, length: nsText.length)
-        var ranges = tokenizer.tokenize(text)
+        var ranges = tokens
             .filter { token in
                 switch token.kind {
                 case .command, .comment, .mathDelimiter:
@@ -307,8 +355,8 @@ final class LatexSyntaxHighlighter {
         return ranges
     }
 
-    private func bibSpellCheckExcludedRanges(in text: String) -> [NSRange] {
-        bibTokenizer.tokenize(text)
+    private func bibSpellCheckExcludedRanges(tokens: [BibToken]) -> [NSRange] {
+        tokens
             .filter { token in
                 switch token.kind {
                 case .entryType, .citationKey, .fieldName, .comment, .punctuation:
@@ -320,29 +368,26 @@ final class LatexSyntaxHighlighter {
             .map(\.range)
     }
 
-    private func applyInvisibleMarks(
-        to textStorage: NSTextStorage,
+    private func appendInvisibleOps(
         text: String,
         font: NSFont,
-        palette: EditorPalette
+        palette: EditorPalette,
+        into ops: inout [HighlightPlan.Op]
     ) {
         let nsText = text as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: palette.invisible,
+            .font: font
+        ]
         for index in 0..<nsText.length {
             let character = nsText.character(at: index)
             guard character == 32 || character == 9 else { continue }
             let mark = character == 9 ? "→" : "·"
-            textStorage.addAttribute(
-                .toolTip,
-                value: mark,
-                range: NSRange(location: index, length: 1)
-            )
-            textStorage.addAttributes(
-                [
-                    .foregroundColor: palette.invisible,
-                    .font: font
-                ],
-                range: NSRange(location: index, length: 1)
-            )
+            ops.append(HighlightPlan.Op(
+                range: NSRange(location: index, length: 1),
+                attributes: attributes,
+                tooltip: mark
+            ))
         }
     }
 }

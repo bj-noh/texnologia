@@ -2,10 +2,21 @@ import AppKit
 import SwiftUI
 
 private enum EditorLayout {
-    static let lineNumberGutterWidth: CGFloat = 68
-    static let lineNumberSeparatorPadding: CGFloat = 12
-    static let textInset = NSSize(width: 24, height: 12)
-    static let lineFragmentPadding: CGFloat = 2
+    static let minGutterWidth: CGFloat = 54
+    static let maxGutterWidth: CGFloat = 96
+    static let gutterDigitWidth: CGFloat = 8
+    static let gutterLeftPadding: CGFloat = 12
+    static let gutterRightPadding: CGFloat = 16
+    static let textLeftInset: CGFloat = 32
+    static let textRightInset: CGFloat = 16
+    static let textVerticalInset: CGFloat = 12
+    static let lineFragmentPadding: CGFloat = 4
+
+    static func gutterWidth(for maxLine: Int) -> CGFloat {
+        let digits = max(3, String(max(maxLine, 1)).count)
+        let raw = gutterLeftPadding + gutterDigitWidth * CGFloat(digits) + gutterRightPadding
+        return min(maxGutterWidth, max(minGutterWidth, raw))
+    }
 }
 
 struct LaTeXEditorView: NSViewRepresentable {
@@ -24,6 +35,8 @@ struct LaTeXEditorView: NSViewRepresentable {
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
+        scrollView.borderType = .noBorder
+        scrollView.findBarPosition = .aboveContent
 
         let initialFrame = scrollView.contentView.bounds.width > 0
             ? scrollView.contentView.bounds
@@ -35,10 +48,16 @@ struct LaTeXEditorView: NSViewRepresentable {
         textView.isGrammarCheckingEnabled = true
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
+        textView.allowsUndo = true
         textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.autoresizingMask = [.width]
-        textView.textContainerInset = EditorLayout.textInset
+        textView.textContainerInset = NSSize(
+            width: EditorLayout.textLeftInset,
+            height: EditorLayout.textVerticalInset
+        )
         textView.textContainer?.lineFragmentPadding = EditorLayout.lineFragmentPadding
         textView.textContainer?.lineBreakMode = .byWordWrapping
         textView.layoutManager?.allowsNonContiguousLayout = true
@@ -57,23 +76,24 @@ struct LaTeXEditorView: NSViewRepresentable {
         context.coordinator.settings = settings
         context.coordinator.syntaxMode = syntaxMode
         context.coordinator.applySettings(to: textView, force: true)
+        context.coordinator.updateGutterWidth(for: textView)
         context.coordinator.highlight(textView, force: true)
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        scrollView.hasVerticalRuler = true
-        scrollView.rulersVisible = true
-        scrollView.verticalRulerView?.ruleThickness = EditorLayout.lineNumberGutterWidth
-        scrollView.tile()
+        if !scrollView.rulersVisible {
+            scrollView.hasVerticalRuler = true
+            scrollView.rulersVisible = true
+        }
 
         let settingsChanged = context.coordinator.settings != settings
         let syntaxModeChanged = context.coordinator.syntaxMode != syntaxMode
         context.coordinator.settings = settings
         context.coordinator.syntaxMode = syntaxMode
         context.coordinator.applySettings(to: textView, force: settingsChanged)
-        context.coordinator.updateWrappingWidth(for: textView)
+        context.coordinator.updateGutterWidth(for: textView)
 
         if textView.string != text {
             context.coordinator.replaceText(text, in: textView)
@@ -95,15 +115,72 @@ struct LaTeXEditorView: NSViewRepresentable {
         var settings: AppSettings
         var syntaxMode: EditorSyntaxMode
         private let highlighter = LatexSyntaxHighlighter()
+        private let highlightQueue = DispatchQueue(label: "com.texifier.LatexHighlight", qos: .userInitiated)
         private var isProgrammaticChange = false
         private var handledJumpID: UUID?
         private var pendingHighlight: DispatchWorkItem?
+        private var highlightVersion: UInt64 = 0
         private var spellCheckExcludedRanges: [NSRange] = []
+        private var cachedLineBucket: Int = -1
 
         init(text: Binding<String>, settings: AppSettings, syntaxMode: EditorSyntaxMode) {
             self._text = text
             self.settings = settings
             self.syntaxMode = syntaxMode
+            super.init()
+            registerEditorNotifications()
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        private func registerEditorNotifications() {
+            let nc = NotificationCenter.default
+            nc.addObserver(self, selector: #selector(handleToggleComment), name: .editorToggleComment, object: nil)
+            nc.addObserver(self, selector: #selector(handleDuplicateLine), name: .editorDuplicateLine, object: nil)
+            nc.addObserver(self, selector: #selector(handleDeleteLine), name: .editorDeleteLine, object: nil)
+            nc.addObserver(self, selector: #selector(handleSelectLine), name: .editorSelectCurrentLine, object: nil)
+            nc.addObserver(self, selector: #selector(handleMoveLineUp), name: .editorMoveLineUp, object: nil)
+            nc.addObserver(self, selector: #selector(handleMoveLineDown), name: .editorMoveLineDown, object: nil)
+            nc.addObserver(self, selector: #selector(handlePerformFind), name: .editorPerformFind, object: nil)
+        }
+
+        @objc private func handleToggleComment() {
+            guard let textView, textView.window?.firstResponder === textView else { return }
+            EditorTextOps.toggleComment(in: textView)
+        }
+
+        @objc private func handleDuplicateLine() {
+            guard let textView, textView.window?.firstResponder === textView else { return }
+            EditorTextOps.duplicateLine(in: textView)
+        }
+
+        @objc private func handleDeleteLine() {
+            guard let textView, textView.window?.firstResponder === textView else { return }
+            EditorTextOps.deleteLine(in: textView)
+        }
+
+        @objc private func handleSelectLine() {
+            guard let textView, textView.window?.firstResponder === textView else { return }
+            EditorTextOps.selectCurrentLine(in: textView)
+        }
+
+        @objc private func handleMoveLineUp() {
+            guard let textView, textView.window?.firstResponder === textView else { return }
+            EditorTextOps.moveLine(up: true, in: textView)
+        }
+
+        @objc private func handleMoveLineDown() {
+            guard let textView, textView.window?.firstResponder === textView else { return }
+            EditorTextOps.moveLine(up: false, in: textView)
+        }
+
+        @objc private func handlePerformFind() {
+            guard let textView, textView.window?.firstResponder === textView else { return }
+            let item = NSMenuItem()
+            item.tag = NSTextFinder.Action.showFindInterface.rawValue
+            textView.performTextFinderAction(item)
         }
 
         func textDidChange(_ notification: Notification) {
@@ -111,6 +188,7 @@ struct LaTeXEditorView: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             text = textView.string
             scheduleHighlight(textView)
+            updateGutterWidth(for: textView)
             lineNumberView?.needsDisplay = true
         }
 
@@ -120,14 +198,46 @@ struct LaTeXEditorView: NSViewRepresentable {
             textView.string = newText
             textView.setSelectedRange(selectedRange.clamped(to: textView.string.utf16.count))
             isProgrammaticChange = false
+            cachedLineBucket = -1
+            updateGutterWidth(for: textView)
             lineNumberView?.needsDisplay = true
+        }
+
+        func updateGutterWidth(for textView: NSTextView) {
+            guard let rulerView = lineNumberView, let scrollView = textView.enclosingScrollView else { return }
+            let nsText = textView.string as NSString
+            let approximateLines = nsText.length / 40 + 1
+            let bucket = digitBucket(for: approximateLines)
+            if bucket == cachedLineBucket {
+                return
+            }
+            let lineCount = nsText.approximateLineCount
+            let actualBucket = digitBucket(for: lineCount)
+            cachedLineBucket = actualBucket
+            let width = EditorLayout.gutterWidth(for: lineCount)
+            if rulerView.setGutterWidth(width) {
+                scrollView.tile()
+                (textView as? WrappingTextView)?.updateWrappingContainerWidth()
+            }
+        }
+
+        private func digitBucket(for lineCount: Int) -> Int {
+            max(3, String(max(lineCount, 1)).count)
         }
 
         func highlight(_ textView: NSTextView, force: Bool) {
             pendingHighlight?.cancel()
-            highlighter.apply(to: textView.textStorage, text: textView.string, settings: settings, syntaxMode: syntaxMode)
-            clearLatexSpellingMarkers(in: textView)
-            lineNumberView?.needsDisplay = true
+            if force {
+                highlightVersion &+= 1
+                let plan = highlighter.computePlan(
+                    text: textView.string,
+                    settings: settings,
+                    syntaxMode: syntaxMode
+                )
+                applyHighlightPlan(plan, to: textView)
+            } else {
+                scheduleAsyncHighlight(for: textView)
+            }
         }
 
         func textView(_ textView: NSTextView, shouldSetSpellingState value: Int, range affectedCharRange: NSRange) -> Int {
@@ -162,7 +272,10 @@ struct LaTeXEditorView: NSViewRepresentable {
 
             textView.enclosingScrollView?.hasHorizontalScroller = false
             textView.textContainer?.widthTracksTextView = true
-            textView.textContainerInset = EditorLayout.textInset
+            textView.textContainerInset = NSSize(
+                width: EditorLayout.textLeftInset,
+                height: EditorLayout.textVerticalInset
+            )
             textView.textContainer?.lineFragmentPadding = EditorLayout.lineFragmentPadding
             updateWrappingWidth(for: textView)
             textView.isHorizontallyResizable = false
@@ -173,10 +286,44 @@ struct LaTeXEditorView: NSViewRepresentable {
             pendingHighlight?.cancel()
             let workItem = DispatchWorkItem { [weak self, weak textView] in
                 guard let self, let textView else { return }
-                self.highlight(textView, force: false)
+                self.scheduleAsyncHighlight(for: textView)
             }
             pendingHighlight = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(90), execute: workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(70), execute: workItem)
+        }
+
+        private func scheduleAsyncHighlight(for textView: NSTextView) {
+            highlightVersion &+= 1
+            let version = highlightVersion
+            let snapshot = textView.string
+            let settingsSnapshot = settings
+            let syntaxModeSnapshot = syntaxMode
+            let highlighter = self.highlighter
+            highlightQueue.async { [weak self, weak textView] in
+                let plan = highlighter.computePlan(
+                    text: snapshot,
+                    settings: settingsSnapshot,
+                    syntaxMode: syntaxModeSnapshot
+                )
+                DispatchQueue.main.async { [weak self, weak textView] in
+                    guard let self, let textView, self.highlightVersion == version else { return }
+                    self.applyHighlightPlan(plan, to: textView)
+                }
+            }
+        }
+
+        private func applyHighlightPlan(_ plan: HighlightPlan, to textView: NSTextView) {
+            guard let textStorage = textView.textStorage, textStorage.length == plan.textLength else { return }
+            highlighter.apply(plan: plan, to: textStorage)
+            if settings.editorSpellChecking {
+                spellCheckExcludedRanges = plan.spellExcludedRanges
+                for range in plan.spellExcludedRanges where range.length > 0 {
+                    textView.setSpellingState(0, range: range)
+                }
+            } else {
+                spellCheckExcludedRanges = []
+            }
+            lineNumberView?.needsDisplay = true
         }
 
         func updateWrappingWidth(for textView: NSTextView) {
@@ -201,17 +348,6 @@ struct LaTeXEditorView: NSViewRepresentable {
             lineNumberView?.needsDisplay = true
         }
 
-        private func clearLatexSpellingMarkers(in textView: NSTextView) {
-            guard settings.editorSpellChecking else {
-                spellCheckExcludedRanges = []
-                return
-            }
-            let excludedRanges = highlighter.spellCheckExcludedRanges(in: textView.string, syntaxMode: syntaxMode)
-            spellCheckExcludedRanges = excludedRanges
-            for range in excludedRanges where range.length > 0 {
-                textView.setSpellingState(0, range: range)
-            }
-        }
     }
 }
 
@@ -220,19 +356,9 @@ private final class EditorScrollView: NSScrollView {
         NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
     }
 
-    override func tile() {
-        verticalRulerView?.ruleThickness = EditorLayout.lineNumberGutterWidth
-        super.tile()
-    }
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         tile()
-    }
-
-    override func layout() {
-        super.layout()
-        verticalRulerView?.ruleThickness = EditorLayout.lineNumberGutterWidth
     }
 }
 
@@ -284,7 +410,7 @@ private final class WrappingTextView: NSTextView {
 
 fileprivate final class LineNumberRulerView: NSRulerView {
     private weak var textView: NSTextView?
-    private let gutterWidth = EditorLayout.lineNumberGutterWidth
+    private var gutterWidth: CGFloat = EditorLayout.minGutterWidth
 
     init(textView: NSTextView) {
         self.textView = textView
@@ -301,6 +427,15 @@ fileprivate final class LineNumberRulerView: NSRulerView {
         gutterWidth
     }
 
+    @discardableResult
+    func setGutterWidth(_ width: CGFloat) -> Bool {
+        guard abs(width - gutterWidth) > 0.5 else { return false }
+        gutterWidth = width
+        ruleThickness = width
+        needsDisplay = true
+        return true
+    }
+
     override func drawHashMarksAndLabels(in rect: NSRect) {
         guard
             let textView,
@@ -311,11 +446,11 @@ fileprivate final class LineNumberRulerView: NSRulerView {
             return
         }
 
-        let backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.72)
+        let backgroundColor = textView.backgroundColor
         backgroundColor.setFill()
         bounds.fill()
 
-        NSColor.separatorColor.setStroke()
+        NSColor.separatorColor.withAlphaComponent(0.25).setStroke()
         let separator = NSBezierPath()
         separator.move(to: NSPoint(x: bounds.maxX - 0.5, y: bounds.minY))
         separator.line(to: NSPoint(x: bounds.maxX - 0.5, y: bounds.maxY))
@@ -328,7 +463,7 @@ fileprivate final class LineNumberRulerView: NSRulerView {
 
         let numberAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor.secondaryLabelColor
+            .foregroundColor: NSColor.tertiaryLabelColor
         ]
 
         let nsString = textView.string as NSString
@@ -348,7 +483,7 @@ fileprivate final class LineNumberRulerView: NSRulerView {
                 let label = "\(lineNumber)" as NSString
                 let labelSize = label.size(withAttributes: numberAttributes)
                 let y = textView.textContainerOrigin.y + lineRect.minY - visibleRect.minY + 1
-                let x = gutterWidth - labelSize.width - EditorLayout.lineNumberSeparatorPadding
+                let x = gutterWidth - labelSize.width - EditorLayout.gutterRightPadding
                 label.draw(at: NSPoint(x: x, y: y), withAttributes: numberAttributes)
             }
 
@@ -388,6 +523,19 @@ private extension NSTextView {
 }
 
 private extension NSString {
+    var approximateLineCount: Int {
+        guard length > 0 else { return 1 }
+        var count = 1
+        var index = 0
+        while index < length {
+            let r = range(of: "\n", options: .literal, range: NSRange(location: index, length: length - index))
+            guard r.location != NSNotFound else { break }
+            count += 1
+            index = r.location + 1
+        }
+        return count
+    }
+
     func lineNumber(at characterIndex: Int) -> Int {
         guard length > 0 else { return 1 }
         let clampedIndex = min(max(characterIndex, 0), length)

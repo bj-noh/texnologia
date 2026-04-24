@@ -23,12 +23,20 @@ final class AppModel: ObservableObject {
     @Published var isImporting: Bool = false
     @Published var history: [HistoryEntry] = []
     @Published var fileSaveStates: [URL: ExplorerSaveState] = [:]
+    @Published var isChatPaneVisible: Bool = false
+    @Published private(set) var openEditorTabsByWorkspace: [WorkspaceID: [URL]] = [:]
     @Published private var savedEditorFileURL: URL?
     @Published private var savedEditorText: String = ""
+    private var dirtyEditorBuffers: [URL: String] = [:]
+    private var cleanDiskTextByURL: [URL: String] = [:]
+    private var didRestoreSessionState = false
 
     private let indexer = ProjectIndexer()
     private let buildService = LatexBuildService()
     private var selectedFileEncoding: String.Encoding = .utf8
+    private var fileLoadToken: UInt64 = 0
+
+    lazy var chatSession: ChatSession = ChatSession(appModel: self)
 
     var canExportFocusedPDF: Bool {
         focusedPDFURL != nil
@@ -53,26 +61,60 @@ final class AppModel: ObservableObject {
         return indexer.outlineItems(in: editorText, fileURL: editorFileURL)
     }
 
+    var currentOpenEditorTabs: [URL] {
+        guard let workspaceID = workspace?.id else { return [] }
+        return openEditorTabsByWorkspace[workspaceID] ?? []
+    }
+
     func updateEditorText(_ newText: String) {
         editorText = newText
         guard selectedFilePresentation == .text, let editorFileURL else { return }
 
         if savedEditorFileURL == editorFileURL, savedEditorText == newText {
+            dirtyEditorBuffers.removeValue(forKey: editorFileURL)
             if fileSaveStates[editorFileURL] != nil {
                 fileSaveStates[editorFileURL] = .saved
             }
         } else {
+            dirtyEditorBuffers[editorFileURL] = newText
             fileSaveStates[editorFileURL] = .dirty
         }
     }
 
     init() {
         settings = SettingsStore.loadMigratingIfNeeded()
+        restoreSessionStateIfNeeded()
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.persistSessionState()
+            }
+        }
     }
 
     func updateSettings(_ newSettings: AppSettings) {
         settings = newSettings
         SettingsStore.save(newSettings)
+    }
+
+    func adjustEditorFontSize(by delta: Double) {
+        var next = settings
+        next.editorFontSize = max(9, min(32, next.editorFontSize + delta))
+        updateSettings(next)
+    }
+
+    func resetEditorFontSize() {
+        var next = settings
+        next.editorFontSize = AppSettings.default.editorFontSize
+        updateSettings(next)
+    }
+
+    func toggleChatPane() {
+        isChatPaneVisible.toggle()
+        persistSessionStateIfReady()
     }
 
     func openProjectPanel() {
@@ -89,6 +131,43 @@ final class AppModel: ObservableObject {
         }
 
         openProjectResource(at: url)
+    }
+
+    func createEmptyProjectPanel() {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "NewProject"
+        panel.message = "Choose a location for the new empty LaTeX project folder."
+        panel.prompt = "Create"
+        panel.allowedContentTypes = [.folder]
+
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+        let fileManager = FileManager.default
+        do {
+            try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+            let mainURL = destination.appendingPathComponent("main.tex")
+            if !fileManager.fileExists(atPath: mainURL.path) {
+                let boilerplate = """
+                \\documentclass{article}
+
+                \\begin{document}
+
+                \\title{New Project}
+                \\author{}
+                \\date{}
+                \\maketitle
+
+                % 여기에 작성하세요.
+
+                \\end{document}
+                """
+                try boilerplate.write(to: mainURL, atomically: true, encoding: .utf8)
+            }
+            openProject(at: destination, preferredMainFile: mainURL)
+        } catch {
+            statusMessage = "Could not create project: \(error.localizedDescription)"
+        }
     }
 
     func openZipPanel() {
@@ -141,6 +220,9 @@ final class AppModel: ObservableObject {
         selectedFileURL = detectedRoot
         editorFileURL = detectedRoot
         selectedFilePresentation = detectedRoot == nil ? .none : .text
+        if let detectedRoot, detectedRoot.isEditableTextFile {
+            appendEditorTab(detectedRoot, for: workspaceID)
+        }
         loadSelectedFile()
         statusMessage = detectedRoot == nil
             ? "Opened \(displayName), but no root .tex file was detected yet."
@@ -148,6 +230,8 @@ final class AppModel: ObservableObject {
     }
 
     func loadSelectedFile() {
+        fileLoadToken &+= 1
+
         guard let selectedFileURL else {
             editorFileURL = nil
             editorText = ""
@@ -192,32 +276,131 @@ final class AppModel: ObservableObject {
             return
         }
 
-        do {
-            let loaded = try TextFileLoader.loadEditable(url: selectedFileURL)
-            editorFileURL = selectedFileURL
-            editorText = selectedFileURL.pathExtension.lowercased() == "json"
-                ? TextFileLoader.prettyPrintedJSONIfPossible(loaded.text)
-                : loaded.text
-            selectedFileEncoding = loaded.encoding
+        loadEditableFileAsync(url: selectedFileURL, token: fileLoadToken)
+    }
+
+    private func loadEditableFileAsync(url: URL, token: UInt64) {
+        if editorFileURL != url {
+            editorText = ""
+            markEditorClean(fileURL: nil, text: "")
+        }
+        editorFileURL = url
+        selectedFilePresentation = .text
+
+        if let dirtyText = dirtyEditorBuffers[url], let clean = cleanDiskTextByURL[url] {
+            editorText = dirtyText
+            markEditorClean(fileURL: url, text: clean)
+            fileSaveStates[url] = .dirty
+            statusMessage = "Restored \(url.lastPathComponent) with unsaved changes."
+            return
+        }
+
+        statusMessage = "Opening \(url.lastPathComponent)…"
+        let prettify = url.pathExtension.lowercased() == "json"
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let outcome: EditableLoadOutcome
+            do {
+                let loaded = try TextFileLoader.loadEditable(url: url)
+                let text = prettify ? TextFileLoader.prettyPrintedJSONIfPossible(loaded.text) : loaded.text
+                outcome = .loaded(text: text, encoding: loaded.encoding)
+            } catch TextFileLoader.LoadError.fileTooLarge {
+                outcome = .tooLarge
+            } catch {
+                outcome = .failed(description: error.localizedDescription)
+            }
+            await self?.applyEditableLoadOutcome(outcome, for: url, token: token)
+        }
+    }
+
+    private func applyEditableLoadOutcome(_ outcome: EditableLoadOutcome, for url: URL, token: UInt64) {
+        guard fileLoadToken == token, selectedFileURL == url else { return }
+        switch outcome {
+        case .loaded(let text, let encoding):
+            editorFileURL = url
+            editorText = text
+            selectedFileEncoding = encoding
             selectedFilePresentation = .text
-            markEditorClean(fileURL: selectedFileURL, text: editorText)
-            fileSaveStates[selectedFileURL] = .saved
-            statusMessage = "Opened \(selectedFileURL.lastPathComponent)."
-        } catch TextFileLoader.LoadError.fileTooLarge {
-            loadReadOnlyPreview(for: selectedFileURL)
-        } catch {
+            markEditorClean(fileURL: url, text: text)
+            cleanDiskTextByURL[url] = text
+            fileSaveStates[url] = .saved
+            statusMessage = "Opened \(url.lastPathComponent)."
+        case .tooLarge:
+            loadReadOnlyPreview(for: url)
+        case .failed(let description):
             editorFileURL = nil
             editorText = ""
             markEditorClean(fileURL: nil, text: "")
-            selectedFilePresentation = .external(selectedFileURL)
-            statusMessage = "Could not read \(selectedFileURL.lastPathComponent): \(error.localizedDescription)"
+            selectedFilePresentation = .external(url)
+            statusMessage = "Could not read \(url.lastPathComponent): \(description)"
         }
+    }
+
+    private enum EditableLoadOutcome {
+        case loaded(text: String, encoding: String.Encoding)
+        case tooLarge
+        case failed(description: String)
     }
 
     func selectFile(_ url: URL) {
         activateSession(containing: url)
         selectedFileURL = url
+        if url.isEditableTextFile, let id = workspace?.id {
+            appendEditorTab(url, for: id)
+        }
         loadSelectedFile()
+    }
+
+    func activateEditorTab(_ url: URL) {
+        guard let id = workspace?.id else { return }
+        if var tabs = openEditorTabsByWorkspace[id], !tabs.contains(url) {
+            tabs.append(url)
+            openEditorTabsByWorkspace[id] = tabs
+        }
+        selectedFileURL = url
+        loadSelectedFile()
+        persistSessionStateIfReady()
+    }
+
+    func closeEditorTab(_ url: URL) {
+        guard let id = workspace?.id else { return }
+        guard var tabs = openEditorTabsByWorkspace[id] else { return }
+        guard let idx = tabs.firstIndex(of: url) else { return }
+
+        tabs.remove(at: idx)
+        openEditorTabsByWorkspace[id] = tabs
+        dirtyEditorBuffers.removeValue(forKey: url)
+
+        defer { persistSessionStateIfReady() }
+
+        guard editorFileURL == url else { return }
+
+        if tabs.isEmpty {
+            editorFileURL = nil
+            editorText = ""
+            selectedFilePresentation = .none
+            selectedFileURL = nil
+            markEditorClean(fileURL: nil, text: "")
+            return
+        }
+
+        let nextIndex = min(idx, tabs.count - 1)
+        let nextURL = tabs[nextIndex]
+        selectedFileURL = nextURL
+        loadSelectedFile()
+    }
+
+    private func appendEditorTab(_ url: URL, for id: WorkspaceID) {
+        var tabs = openEditorTabsByWorkspace[id] ?? []
+        if !tabs.contains(url) {
+            tabs.append(url)
+            openEditorTabsByWorkspace[id] = tabs
+            persistSessionStateIfReady()
+        }
+    }
+
+    private func persistSessionStateIfReady() {
+        guard didRestoreSessionState else { return }
+        persistSessionState()
     }
 
     func activateSession(_ id: WorkspaceID) {
@@ -225,11 +408,27 @@ final class AppModel: ObservableObject {
         workspace = session.workspace
         projectIndex = session.index
         statusMessage = "Activated \(session.workspace.displayName)."
+
+        let tabs = openEditorTabsByWorkspace[id] ?? []
+        let targetURL: URL? = tabs.first { editorFileURL == $0 } ?? tabs.first ?? session.workspace.mainFileURL
+        if let targetURL {
+            selectedFileURL = targetURL
+            editorFileURL = targetURL
+            selectedFilePresentation = .text
+            loadSelectedFile()
+        }
+        persistSessionStateIfReady()
     }
 
     func closeSession(_ id: WorkspaceID) {
         guard let closingIndex = sessions.firstIndex(where: { $0.id == id }) else { return }
         let closedSession = sessions.remove(at: closingIndex)
+        if let closedTabs = openEditorTabsByWorkspace.removeValue(forKey: id) {
+            for url in closedTabs {
+                dirtyEditorBuffers.removeValue(forKey: url)
+                cleanDiskTextByURL.removeValue(forKey: url)
+            }
+        }
 
         guard workspace?.id == id else {
             statusMessage = "Closed \(closedSession.workspace.displayName) session."
@@ -278,6 +477,9 @@ final class AppModel: ObservableObject {
         selectedFileURL = location.fileURL
         editorFileURL = location.fileURL
         selectedFilePresentation = .text
+        if location.fileURL.isEditableTextFile, let id = workspace?.id {
+            appendEditorTab(location.fileURL, for: id)
+        }
         loadSelectedFile()
         editorJump = EditorJump(location: location)
         statusMessage = "\(location.fileURL.lastPathComponent):\(location.line) - \(issue.message)"
@@ -333,6 +535,19 @@ final class AppModel: ObservableObject {
                 (movedURL(url, from: sourceURL, to: destinationURL) ?? url, state)
             }
         )
+        dirtyEditorBuffers = Dictionary(
+            uniqueKeysWithValues: dirtyEditorBuffers.map { url, text in
+                (movedURL(url, from: sourceURL, to: destinationURL) ?? url, text)
+            }
+        )
+        cleanDiskTextByURL = Dictionary(
+            uniqueKeysWithValues: cleanDiskTextByURL.map { url, text in
+                (movedURL(url, from: sourceURL, to: destinationURL) ?? url, text)
+            }
+        )
+        for (id, tabs) in openEditorTabsByWorkspace {
+            openEditorTabsByWorkspace[id] = tabs.map { movedURL($0, from: sourceURL, to: destinationURL) ?? $0 }
+        }
 
         if let selectedFileURL, let moved = movedURL(selectedFileURL, from: sourceURL, to: destinationURL) {
             self.selectedFileURL = moved
@@ -348,6 +563,15 @@ final class AppModel: ObservableObject {
     func removeExplorerSaveState(for deletedURL: URL) {
         fileSaveStates = fileSaveStates.filter { url, _ in
             !url.isSameOrDescendant(of: deletedURL)
+        }
+        dirtyEditorBuffers = dirtyEditorBuffers.filter { url, _ in
+            !url.isSameOrDescendant(of: deletedURL)
+        }
+        cleanDiskTextByURL = cleanDiskTextByURL.filter { url, _ in
+            !url.isSameOrDescendant(of: deletedURL)
+        }
+        for (id, tabs) in openEditorTabsByWorkspace {
+            openEditorTabsByWorkspace[id] = tabs.filter { !$0.isSameOrDescendant(of: deletedURL) }
         }
 
         if selectedFileURL?.isSameOrDescendant(of: deletedURL) == true {
@@ -372,6 +596,8 @@ final class AppModel: ObservableObject {
             captureHistorySnapshot(reason: "Before save")
             try editorText.write(to: editorFileURL, atomically: true, encoding: selectedFileEncoding)
             markEditorClean(fileURL: editorFileURL, text: editorText)
+            cleanDiskTextByURL[editorFileURL] = editorText
+            dirtyEditorBuffers.removeValue(forKey: editorFileURL)
             fileSaveStates[editorFileURL] = .saved
             statusMessage = "Saved \(editorFileURL.lastPathComponent)."
         } catch {
@@ -400,27 +626,48 @@ final class AppModel: ObservableObject {
         selectedFilePresentation = .text
         selectedFileEncoding = .utf8
         editorText = entry.text
+        dirtyEditorBuffers[entry.fileURL] = entry.text
         fileSaveStates[entry.fileURL] = .dirty
         activateSession(containing: entry.fileURL)
+        if let id = workspace?.id {
+            appendEditorTab(entry.fileURL, for: id)
+        }
         statusMessage = "Restored \(entry.fileName) from history."
     }
 
     private func loadReadOnlyPreview(for url: URL) {
-        do {
-            let preview = try TextFileLoader.loadPreview(url: url)
-            editorFileURL = nil
-            editorText = ""
-            markEditorClean(fileURL: nil, text: "")
+        let token = fileLoadToken
+        statusMessage = "Previewing \(url.lastPathComponent)…"
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let outcome: ReadOnlyPreviewOutcome
+            do {
+                outcome = .loaded(preview: try TextFileLoader.loadPreview(url: url))
+            } catch {
+                outcome = .failed(description: error.localizedDescription)
+            }
+            await self?.applyReadOnlyPreviewOutcome(outcome, for: url, token: token)
+        }
+    }
+
+    private func applyReadOnlyPreviewOutcome(_ outcome: ReadOnlyPreviewOutcome, for url: URL, token: UInt64) {
+        guard fileLoadToken == token, selectedFileURL == url else { return }
+        editorFileURL = nil
+        editorText = ""
+        markEditorClean(fileURL: nil, text: "")
+        switch outcome {
+        case .loaded(let preview):
             selectedFilePresentation = .readOnlyText(preview)
             let prefix = preview.isTruncated ? "Previewing" : "Opened"
             statusMessage = "\(prefix) \(url.lastPathComponent) read-only."
-        } catch {
-            editorFileURL = nil
-            editorText = ""
-            markEditorClean(fileURL: nil, text: "")
+        case .failed(let description):
             selectedFilePresentation = .external(url)
-            statusMessage = "Could not preview \(url.lastPathComponent): \(error.localizedDescription)"
+            statusMessage = "Could not preview \(url.lastPathComponent): \(description)"
         }
+    }
+
+    private enum ReadOnlyPreviewOutcome {
+        case loaded(preview: TextFilePreview)
+        case failed(description: String)
     }
 
     func saveSelectedFileAndBuildIfNeeded() {
@@ -522,19 +769,24 @@ final class AppModel: ObservableObject {
         }
 
         guard let mainFileURL = workspace.mainFileURL, mainFileURL.isEditableTextFile else { return }
+        if editorFileURL == mainFileURL, selectedFilePresentation == .text { return }
 
-        do {
-            let loaded = try TextFileLoader.loadEditable(url: mainFileURL)
-            editorFileURL = mainFileURL
-            editorText = mainFileURL.pathExtension.lowercased() == "json"
-                ? TextFileLoader.prettyPrintedJSONIfPossible(loaded.text)
-                : loaded.text
-            selectedFileEncoding = loaded.encoding
-            selectedFilePresentation = .text
-            markEditorClean(fileURL: mainFileURL, text: editorText)
-        } catch {
-            // Keep the current editor state; preview selection should never blank the editor.
+        let prettify = mainFileURL.pathExtension.lowercased() == "json"
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let loaded = try? TextFileLoader.loadEditable(url: mainFileURL)
+            let text = loaded.map { prettify ? TextFileLoader.prettyPrintedJSONIfPossible($0.text) : $0.text }
+            await self?.applyPreviewEditorPreload(url: mainFileURL, text: text, encoding: loaded?.encoding)
         }
+    }
+
+    private func applyPreviewEditorPreload(url: URL, text: String?, encoding: String.Encoding?) {
+        guard let text, let encoding else { return }
+        guard let workspace, workspace.mainFileURL == url else { return }
+        editorFileURL = url
+        editorText = text
+        selectedFileEncoding = encoding
+        selectedFilePresentation = .text
+        markEditorClean(fileURL: url, text: text)
     }
 
     private var focusedPDFURL: URL? {
@@ -574,6 +826,95 @@ final class AppModel: ObservableObject {
         } else {
             sessions.append(session)
         }
+        persistSessionStateIfReady()
+    }
+
+    func persistSessionState() {
+        let workspaces: [SessionStateSnapshot.WorkspaceEntry] = sessions.map { session in
+            let tabs = openEditorTabsByWorkspace[session.id] ?? []
+            let active = editorFileURL.flatMap { url in
+                tabs.contains(url) ? url : nil
+            }
+            return SessionStateSnapshot.WorkspaceEntry(
+                id: session.id,
+                rootPath: session.workspace.rootURL.path,
+                displayName: session.workspace.displayName,
+                mainFilePath: session.workspace.mainFileURL?.path,
+                openTabPaths: tabs.map { $0.path },
+                activeTabPath: active?.path
+            )
+        }
+        let snapshot = SessionStateSnapshot(
+            workspaces: workspaces,
+            activeWorkspaceID: workspace?.id,
+            isChatPaneVisible: isChatPaneVisible
+        )
+        SessionStateStore.save(snapshot)
+    }
+
+    private func restoreSessionStateIfNeeded() {
+        guard let snapshot = SessionStateStore.load() else {
+            didRestoreSessionState = true
+            return
+        }
+
+        let fileManager = FileManager.default
+        var restoredAny = false
+
+        for entry in snapshot.workspaces {
+            let rootURL = URL(fileURLWithPath: entry.rootPath)
+            guard fileManager.fileExists(atPath: rootURL.path) else { continue }
+
+            let mainURL = entry.mainFilePath.map { URL(fileURLWithPath: $0) }
+                .flatMap { fileManager.fileExists(atPath: $0.path) ? $0 : nil }
+            let resolvedMain = mainURL ?? indexer.detectRootFile(in: rootURL)
+
+            let restoredWorkspace = Workspace(
+                id: entry.id,
+                rootURL: rootURL,
+                mainFileURL: resolvedMain,
+                displayName: entry.displayName
+            )
+            let index = indexer.indexProject(rootURL: rootURL, mainFileURL: resolvedMain)
+            sessions.append(WorkspaceSession(workspace: restoredWorkspace, index: index))
+
+            let validTabs = entry.openTabPaths
+                .map { URL(fileURLWithPath: $0) }
+                .filter { fileManager.fileExists(atPath: $0.path) }
+            if !validTabs.isEmpty {
+                openEditorTabsByWorkspace[entry.id] = validTabs
+            }
+            restoredAny = true
+        }
+
+        if restoredAny {
+            let targetID = snapshot.activeWorkspaceID ?? sessions.first?.id
+            if let targetID, let session = sessions.first(where: { $0.id == targetID }) {
+                workspace = session.workspace
+                projectIndex = session.index
+                let entry = snapshot.workspaces.first { $0.id == targetID }
+                let tabs = openEditorTabsByWorkspace[targetID] ?? []
+                let activeURL: URL? = {
+                    if let path = entry?.activeTabPath,
+                       let candidate = tabs.first(where: { $0.path == path }) {
+                        return candidate
+                    }
+                    return tabs.first ?? session.workspace.mainFileURL
+                }()
+
+                if let activeURL {
+                    selectedFileURL = activeURL
+                    editorFileURL = activeURL
+                    selectedFilePresentation = .text
+                    loadSelectedFile()
+                }
+
+                isChatPaneVisible = snapshot.isChatPaneVisible
+                statusMessage = "Restored \(session.workspace.displayName)."
+            }
+        }
+
+        didRestoreSessionState = true
     }
 
     private func markEditorClean(fileURL: URL?, text: String) {

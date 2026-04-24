@@ -1,0 +1,136 @@
+import Foundation
+import SwiftUI
+
+@MainActor
+final class ChatSession: ObservableObject {
+    @Published private(set) var messages: [ChatMessage] = []
+    @Published private(set) var isStreaming: Bool = false
+    @Published var statusMessage: String?
+    @Published var lastError: String?
+
+    private unowned let appModel: AppModel
+    private var pendingTask: Task<Void, Never>?
+
+    init(appModel: AppModel) {
+        self.appModel = appModel
+    }
+
+    var isConfigured: Bool { appModel.settings.llm.isConfigured }
+
+    func clear() {
+        messages.removeAll()
+        statusMessage = nil
+        lastError = nil
+    }
+
+    func send(userText: String) {
+        let trimmed = userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard isConfigured else {
+            lastError = "API 키를 먼저 설정하세요."
+            return
+        }
+
+        messages.append(ChatMessage(role: .user, blocks: [.text(trimmed)]))
+        runAgenticLoop()
+    }
+
+    func cancel() {
+        pendingTask?.cancel()
+        pendingTask = nil
+        isStreaming = false
+        statusMessage = "취소됨"
+    }
+
+    private func runAgenticLoop() {
+        pendingTask?.cancel()
+        isStreaming = true
+        statusMessage = "생각하는 중…"
+        lastError = nil
+
+        let config = appModel.settings.llm
+        let systemPrompt = makeSystemPrompt()
+        let tools = ChatToolRegistry.toolDefinitions
+
+        pendingTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let client = try LLMClientFactory.make(for: config)
+                var iteration = 0
+                while iteration < 8 {
+                    iteration += 1
+                    let response = try await client.send(
+                        messages: self.messages,
+                        tools: tools,
+                        system: systemPrompt
+                    )
+
+                    try Task.checkCancellation()
+                    let assistantMessage = self.appendAssistantBlocks(response.blocks)
+                    let toolCalls = assistantMessage.toolCalls
+
+                    if toolCalls.isEmpty {
+                        self.statusMessage = nil
+                        self.isStreaming = false
+                        return
+                    }
+
+                    self.statusMessage = "도구 실행 중: \(toolCalls.map(\.name).joined(separator: ", "))"
+
+                    var resultBlocks: [ChatBlock] = []
+                    for call in toolCalls {
+                        try Task.checkCancellation()
+                        let outcome = await ChatToolRegistry.execute(
+                            name: call.name,
+                            inputJSON: call.inputJSON,
+                            appModel: self.appModel
+                        )
+                        resultBlocks.append(.toolResult(ChatToolResult(
+                            toolUseID: call.id,
+                            content: outcome.content,
+                            isError: outcome.isError
+                        )))
+                    }
+                    self.messages.append(ChatMessage(role: .user, blocks: resultBlocks))
+                    self.statusMessage = "응답 생성 중…"
+                }
+                self.statusMessage = "도구 반복 제한에 도달했습니다."
+                self.isStreaming = false
+            } catch is CancellationError {
+                self.isStreaming = false
+                self.statusMessage = nil
+            } catch {
+                self.lastError = (error as? LLMError)?.errorDescription ?? error.localizedDescription
+                self.isStreaming = false
+                self.statusMessage = nil
+            }
+        }
+    }
+
+    private func appendAssistantBlocks(_ blocks: [LLMResponse.Block]) -> ChatMessage {
+        let chatBlocks: [ChatBlock] = blocks.map { block in
+            switch block {
+            case .text(let text): return .text(text)
+            case .toolCall(let id, let name, let input):
+                return .toolCall(ChatToolCall(id: id, name: name, inputJSON: input))
+            }
+        }
+        let message = ChatMessage(role: .assistant, blocks: chatBlocks)
+        messages.append(message)
+        return message
+    }
+
+    private func makeSystemPrompt() -> String {
+        let projectPath = appModel.workspace?.rootURL.path ?? "(no project loaded)"
+        let currentFile = appModel.editorFileURL?.path ?? "(no open editor file)"
+        return """
+        You are TEXnologia's in-editor AI assistant for LaTeX authors.
+        The user is working on a project located at: \(projectPath)
+        The currently focused editor file is: \(currentFile)
+        You can read, list, and write files within the project using the provided tools.
+        Prefer concise responses. Only modify files the user asks about.
+        Never write files outside the project root.
+        When producing LaTeX edits, output valid LaTeX.
+        """
+    }
+}

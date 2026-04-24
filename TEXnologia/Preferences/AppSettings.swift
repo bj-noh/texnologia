@@ -14,6 +14,7 @@ struct AppSettings: Codable, Equatable {
     var editorWrapLines: Bool
     var editorSpellChecking: Bool
     var editorShowInvisibles: Bool
+    var llm: LLMConfiguration
 
     static let `default` = AppSettings(
         defaultEngine: .pdfLaTeX,
@@ -28,8 +29,59 @@ struct AppSettings: Codable, Equatable {
         editorLineSpacing: 3,
         editorWrapLines: true,
         editorSpellChecking: true,
-        editorShowInvisibles: false
+        editorShowInvisibles: false,
+        llm: .default
     )
+
+    init(
+        defaultEngine: LatexEngine,
+        toolchainYear: TexToolchainYear,
+        shellEscapeEnabled: Bool,
+        hidesIntermediateArtifacts: Bool,
+        autoBuildOnSave: Bool,
+        appearance: AppAppearance,
+        editorTheme: EditorTheme,
+        editorFontName: String,
+        editorFontSize: Double,
+        editorLineSpacing: Double,
+        editorWrapLines: Bool,
+        editorSpellChecking: Bool,
+        editorShowInvisibles: Bool,
+        llm: LLMConfiguration
+    ) {
+        self.defaultEngine = defaultEngine
+        self.toolchainYear = toolchainYear
+        self.shellEscapeEnabled = shellEscapeEnabled
+        self.hidesIntermediateArtifacts = hidesIntermediateArtifacts
+        self.autoBuildOnSave = autoBuildOnSave
+        self.appearance = appearance
+        self.editorTheme = editorTheme
+        self.editorFontName = editorFontName
+        self.editorFontSize = editorFontSize
+        self.editorLineSpacing = editorLineSpacing
+        self.editorWrapLines = editorWrapLines
+        self.editorSpellChecking = editorSpellChecking
+        self.editorShowInvisibles = editorShowInvisibles
+        self.llm = llm
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        defaultEngine = try c.decode(LatexEngine.self, forKey: .defaultEngine)
+        toolchainYear = try c.decodeIfPresent(TexToolchainYear.self, forKey: .toolchainYear) ?? AppSettings.default.toolchainYear
+        shellEscapeEnabled = try c.decode(Bool.self, forKey: .shellEscapeEnabled)
+        hidesIntermediateArtifacts = try c.decode(Bool.self, forKey: .hidesIntermediateArtifacts)
+        autoBuildOnSave = try c.decode(Bool.self, forKey: .autoBuildOnSave)
+        appearance = try c.decode(AppAppearance.self, forKey: .appearance)
+        editorTheme = try c.decode(EditorTheme.self, forKey: .editorTheme)
+        editorFontName = try c.decode(String.self, forKey: .editorFontName)
+        editorFontSize = try c.decode(Double.self, forKey: .editorFontSize)
+        editorLineSpacing = try c.decode(Double.self, forKey: .editorLineSpacing)
+        editorWrapLines = try c.decode(Bool.self, forKey: .editorWrapLines)
+        editorSpellChecking = try c.decode(Bool.self, forKey: .editorSpellChecking)
+        editorShowInvisibles = try c.decode(Bool.self, forKey: .editorShowInvisibles)
+        llm = try c.decodeIfPresent(LLMConfiguration.self, forKey: .llm) ?? .default
+    }
 }
 
 enum AppAppearance: String, Codable, CaseIterable, Identifiable {

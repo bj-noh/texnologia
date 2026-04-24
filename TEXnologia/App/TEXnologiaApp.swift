@@ -36,6 +36,62 @@ struct TEXnologiaApp: App {
                 }
                 .keyboardShortcut("f", modifiers: [.command, .control])
             }
+
+            CommandGroup(after: .textFormatting) {
+                Divider()
+                Button("Increase Font Size") {
+                    appModel.adjustEditorFontSize(by: 1)
+                }
+                .keyboardShortcut("=", modifiers: [.command])
+
+                Button("Decrease Font Size") {
+                    appModel.adjustEditorFontSize(by: -1)
+                }
+                .keyboardShortcut("-", modifiers: [.command])
+
+                Button("Reset Font Size") {
+                    appModel.resetEditorFontSize()
+                }
+                .keyboardShortcut("0", modifiers: [.command])
+            }
+
+            CommandGroup(after: .textEditing) {
+                Divider()
+                Button("Find…") {
+                    NotificationCenter.default.post(name: .editorPerformFind, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command])
+
+                Button("Toggle Line Comment") {
+                    NotificationCenter.default.post(name: .editorToggleComment, object: nil)
+                }
+                .keyboardShortcut("/", modifiers: [.command])
+
+                Button("Select Line") {
+                    NotificationCenter.default.post(name: .editorSelectCurrentLine, object: nil)
+                }
+                .keyboardShortcut("l", modifiers: [.command])
+
+                Button("Duplicate Line") {
+                    NotificationCenter.default.post(name: .editorDuplicateLine, object: nil)
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+
+                Button("Delete Line") {
+                    NotificationCenter.default.post(name: .editorDeleteLine, object: nil)
+                }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+
+                Button("Move Line Up") {
+                    NotificationCenter.default.post(name: .editorMoveLineUp, object: nil)
+                }
+                .keyboardShortcut(.upArrow, modifiers: [.option])
+
+                Button("Move Line Down") {
+                    NotificationCenter.default.post(name: .editorMoveLineDown, object: nil)
+                }
+                .keyboardShortcut(.downArrow, modifiers: [.option])
+            }
         }
 
         Settings {

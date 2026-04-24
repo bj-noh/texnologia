@@ -8,6 +8,7 @@ struct MainWindowView: View {
     @State private var issuePanelExpanded = false
     @State private var historyPresented = false
     @State private var rightPaneSplit = false
+    @State private var editorPaneSplit = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,7 +56,17 @@ struct MainWindowView: View {
                 activeWorkspaceID: appModel.workspace?.id,
                 activate: appModel.activateSession,
                 close: appModel.closeSession,
-                newSession: appModel.openProjectPanel
+                openProject: appModel.openProjectPanel,
+                importZip: appModel.openZipPanel,
+                createEmpty: appModel.createEmptyProjectPanel
+            )
+
+            EditorTabBar(
+                tabs: appModel.currentOpenEditorTabs,
+                activeURL: appModel.editorFileURL,
+                saveStates: appModel.fileSaveStates,
+                activate: appModel.activateEditorTab,
+                close: appModel.closeEditorTab
             )
 
             HSplitView {
@@ -76,12 +87,14 @@ struct MainWindowView: View {
                     onStatus: appModel.setStatus
                 )
                 .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
+                .layoutPriority(0)
 
                 CenterPaneView(
                     presentation: appModel.selectedFilePresentation,
                     selectedFileURL: appModel.selectedFileURL,
                     editorFileURL: appModel.editorFileURL,
                     isEditorSaved: appModel.isEditorSaved,
+                    isSplit: $editorPaneSplit,
                     text: Binding(
                         get: { appModel.editorText },
                         set: { appModel.updateEditorText($0) }
@@ -89,7 +102,8 @@ struct MainWindowView: View {
                     settings: appModel.settings,
                     jump: appModel.editorJump
                 )
-                .frame(minWidth: 420)
+                .frame(minWidth: 420, idealWidth: 720)
+                .layoutPriority(2)
 
                 RightPreviewPane(
                     focusedPane: $appModel.focusedPreviewPane,
@@ -97,7 +111,21 @@ struct MainWindowView: View {
                     secondaryPresentation: appModel.secondaryPreviewPresentation,
                     isSplit: $rightPaneSplit
                 )
-                    .frame(minWidth: 360)
+                .frame(minWidth: 320, idealWidth: 480)
+                .layoutPriority(1)
+
+                if appModel.isChatPaneVisible {
+                    ChatPaneView(
+                        session: appModel.chatSession,
+                        isPresented: Binding(
+                            get: { appModel.isChatPaneVisible },
+                            set: { appModel.isChatPaneVisible = $0 }
+                        )
+                    )
+                    .frame(minWidth: 300, idealWidth: 360, maxWidth: 520)
+                    .layoutPriority(1)
+                    .transition(.move(edge: .trailing))
+                }
             }
         }
     }
@@ -113,12 +141,20 @@ struct MainWindowView: View {
             TEXnologiaMarkView(size: 26)
 
             Text(appModel.workspace?.displayName ?? "TEXnologia")
-                .font(.headline)
+                .font(.system(size: 13, weight: .semibold))
+                .tracking(0.1)
+
+            if appModel.workspace != nil {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: 1, height: 14)
+            }
 
             Text(appModel.statusMessage)
-                .font(.caption)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .truncationMode(.middle)
 
             Spacer()
 
@@ -139,7 +175,15 @@ struct MainWindowView: View {
             .help("History")
             .accessibilityLabel("History")
             .popover(isPresented: $historyPresented) {
-                HistoryPopover(entries: appModel.history, restore: appModel.restoreHistoryEntry)
+                HistoryDiffPopover(
+                    entries: appModel.history,
+                    currentEditorText: appModel.editorText,
+                    currentEditorFileURL: appModel.editorFileURL,
+                    restore: { entry in
+                        appModel.restoreHistoryEntry(entry)
+                        historyPresented = false
+                    }
+                )
             }
 
             Button {
@@ -151,6 +195,17 @@ struct MainWindowView: View {
             .accessibilityLabel("Export PDF")
             .disabled(!appModel.canExportFocusedPDF)
 
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    appModel.toggleChatPane()
+                }
+            } label: {
+                Image(systemName: appModel.isChatPaneVisible ? "sparkles.rectangle.stack.fill" : "sparkles")
+                    .foregroundStyle(appModel.isChatPaneVisible ? Color.accentColor : Color.primary)
+            }
+            .help("AI Assistant")
+            .accessibilityLabel("AI Assistant")
+
             CompileOptionsControl(
                 settings: $appModel.settings,
                 canCompile: appModel.workspace?.mainFileURL != nil && !appModel.isImporting,
@@ -161,6 +216,11 @@ struct MainWindowView: View {
         .padding(.horizontal, 12)
         .frame(height: 44)
         .background(.bar)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 0.5)
+        }
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -323,25 +383,37 @@ private struct SessionTabBar: View {
     var activeWorkspaceID: WorkspaceID?
     var activate: (WorkspaceID) -> Void
     var close: (WorkspaceID) -> Void
-    var newSession: () -> Void
+    var openProject: () -> Void
+    var importZip: () -> Void
+    var createEmpty: () -> Void
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach(sessions) { session in
+                    let isActive = session.id == activeWorkspaceID
                     Button {
                         activate(session.id)
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: session.id == activeWorkspaceID ? "shippingbox.fill" : "shippingbox")
-                                .font(.caption)
+                            Image(systemName: isActive ? "shippingbox.fill" : "shippingbox")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(isActive ? Color.accentColor : .secondary)
                             Text(session.workspace.displayName)
+                                .font(.system(size: 11, weight: isActive ? .semibold : .regular))
+                                .foregroundStyle(isActive ? .primary : .secondary)
                                 .lineLimit(1)
                         }
                         .padding(.horizontal, 10)
-                        .frame(height: 26)
-                        .background(session.id == activeWorkspaceID ? Color.accentColor.opacity(0.18) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .frame(height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(isActive ? Color.accentColor.opacity(0.12) : Color.clear)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 5)
+                                .stroke(Color.accentColor.opacity(isActive ? 0.35 : 0), lineWidth: 0.6)
+                        }
                     }
                     .buttonStyle(.plain)
                     .help(session.workspace.rootURL.path)
@@ -353,21 +425,118 @@ private struct SessionTabBar: View {
                     }
                 }
 
-                Button {
-                    newSession()
+                Menu {
+                    Button {
+                        createEmpty()
+                    } label: {
+                        Label("New Empty Project…", systemImage: "doc.badge.plus")
+                    }
+                    Button {
+                        openProject()
+                    } label: {
+                        Label("Open Folder or File…", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        importZip()
+                    } label: {
+                        Label("Import Zip…", systemImage: "archivebox")
+                    }
                 } label: {
                     Image(systemName: "plus")
-                        .frame(width: 24, height: 24)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .menuStyle(.borderlessButton)
                 .help("New Session")
                 .accessibilityLabel("New Session")
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
         }
         .scrollIndicators(.never)
         .background(.bar)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 0.5)
+        }
+    }
+}
+
+private struct EditorTabBar: View {
+    var tabs: [URL]
+    var activeURL: URL?
+    var saveStates: [URL: ExplorerSaveState]
+    var activate: (URL) -> Void
+    var close: (URL) -> Void
+
+    var body: some View {
+        if tabs.isEmpty {
+            EmptyView()
+        } else {
+            ScrollView(.horizontal) {
+                HStack(spacing: 2) {
+                    ForEach(tabs, id: \.self) { url in
+                        tab(for: url)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+            }
+            .scrollIndicators(.never)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color.black.opacity(0.06))
+                    .frame(height: 0.5)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tab(for url: URL) -> some View {
+        let isActive = url == activeURL
+        let state = saveStates[url] ?? .saved
+
+        HStack(spacing: 5) {
+            Circle()
+                .fill(state == .dirty ? Color.orange : Color.green.opacity(0.85))
+                .frame(width: 5, height: 5)
+            Text(url.lastPathComponent)
+                .font(.system(size: 10, weight: isActive ? .semibold : .regular))
+                .foregroundStyle(isActive ? .primary : .secondary)
+                .lineLimit(1)
+            Button {
+                close(url)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14, height: 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Close \(url.lastPathComponent)")
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 22)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(isActive ? Color.accentColor.opacity(0.10) : Color.clear)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .stroke(Color.accentColor.opacity(isActive ? 0.28 : 0), lineWidth: 0.6)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            activate(url)
+        }
+        .help(url.path)
     }
 }
 
@@ -376,19 +545,73 @@ private struct CenterPaneView: View {
     var selectedFileURL: URL?
     var editorFileURL: URL?
     var isEditorSaved: Bool
+    @Binding var isSplit: Bool
     @Binding var text: String
     var settings: AppSettings
     var jump: EditorJump?
 
     var body: some View {
-        Group {
-            switch presentation {
-            case .text:
-                VStack(spacing: 0) {
-                    EditorStatusHeader(
-                        fileURL: editorFileURL,
-                        isSaved: isEditorSaved
+        ZStack(alignment: .topTrailing) {
+            content
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+
+            if presentation == .text {
+                Button {
+                    isSplit.toggle()
+                } label: {
+                    Image(systemName: isSplit ? "rectangle" : "rectangle.split.1x2")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 24, height: 22)
+                }
+                .buttonStyle(.plain)
+                .help(isSplit ? "Merge to single editor pane" : "Split editor pane")
+                .accessibilityLabel(isSplit ? "Merge to single editor pane" : "Split editor pane")
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 5))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color.secondary.opacity(0.22), lineWidth: 0.6)
+                }
+                .opacity(0.82)
+                .padding(.top, 3)
+                .padding(.trailing, 8)
+            }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        VStack(spacing: 0) {
+            EditorStatusHeader(
+                fileURL: statusFileURL,
+                statusLabel: statusLabel,
+                isSaved: presentation == .text && isEditorSaved,
+                showsSaveIndicator: presentation == .text
+            )
+
+            ZStack {
+                Color(nsColor: .textBackgroundColor)
+                    .ignoresSafeArea(.container, edges: .all)
+
+                body(for: presentation)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func body(for presentation: FilePresentation) -> some View {
+        switch presentation {
+        case .text:
+            if isSplit {
+                VSplitView {
+                    LaTeXEditorView(
+                        text: $text,
+                        settings: settings,
+                        syntaxMode: editorFileURL?.editorSyntaxMode ?? .plain,
+                        jump: jump
                     )
+                    .frame(minHeight: 180)
 
                     LaTeXEditorView(
                         text: $text,
@@ -396,51 +619,91 @@ private struct CenterPaneView: View {
                         syntaxMode: editorFileURL?.editorSyntaxMode ?? .plain,
                         jump: jump
                     )
+                    .frame(minHeight: 180)
                 }
-            case .readOnlyText(let preview):
-                ReadOnlyTextPreviewPane(preview: preview)
-            case .pdf(let url):
-                PDFPaneView(documentURL: url)
-            case .image(let url):
-                ImagePreviewPane(fileURL: url)
-            case .external(let url):
-                FilePlaceholderView(
-                    icon: "doc",
-                    title: url.lastPathComponent,
-                    message: "This file type is not editable in TEXnologia yet.",
-                    fileURL: url
-                )
-            case .none:
-                FilePlaceholderView(
-                    icon: "text.cursor",
-                    title: "No source file selected",
-                    message: "Choose a .tex, .bib, .sty, or .cls file from the explorer.",
-                    fileURL: editorFileURL ?? selectedFileURL
+            } else {
+                LaTeXEditorView(
+                    text: $text,
+                    settings: settings,
+                    syntaxMode: editorFileURL?.editorSyntaxMode ?? .plain,
+                    jump: jump
                 )
             }
+        case .readOnlyText(let preview):
+            ReadOnlyTextPreviewPane(preview: preview)
+        case .pdf(let url):
+            PDFPaneView(documentURL: url)
+        case .image(let url):
+            ImagePreviewPane(fileURL: url)
+        case .external(let url):
+            FilePlaceholderView(
+                icon: "doc",
+                title: url.lastPathComponent,
+                message: "This file type is not editable in TEXnologia yet.",
+                fileURL: url
+            )
+        case .none:
+            FilePlaceholderView(
+                icon: "text.cursor",
+                title: "No source file selected",
+                message: "Choose a .tex, .bib, .sty, or .cls file from the explorer.",
+                fileURL: editorFileURL ?? selectedFileURL
+            )
         }
-        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-        .fixedSize(horizontal: false, vertical: false)
+    }
+
+    private var statusFileURL: URL? {
+        switch presentation {
+        case .text: return editorFileURL
+        case .readOnlyText(let preview): return preview.fileURL
+        case .pdf(let url), .image(let url), .external(let url): return url
+        case .none: return editorFileURL ?? selectedFileURL
+        }
+    }
+
+    private var statusLabel: String? {
+        switch presentation {
+        case .text: return nil
+        case .readOnlyText: return "Read-only preview"
+        case .pdf: return "PDF preview"
+        case .image: return "Image preview"
+        case .external: return "External file"
+        case .none: return "No file"
+        }
     }
 }
 
 private struct EditorStatusHeader: View {
     var fileURL: URL?
+    var statusLabel: String?
     var isSaved: Bool
+    var showsSaveIndicator: Bool = true
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "doc.text")
-                .font(.caption)
+            Image(systemName: iconName)
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
 
             Text(fileURL?.lastPathComponent ?? "Untitled")
-                .font(.caption)
+                .font(.system(size: 11, weight: .medium))
                 .lineLimit(1)
 
-            if isSaved {
-                Image(systemName: "checkmark.square.fill")
-                    .font(.system(size: 12, weight: .semibold))
+            if let statusLabel {
+                Text(statusLabel)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.secondary.opacity(0.10))
+                    )
+            }
+
+            if showsSaveIndicator && isSaved {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.green)
                     .transition(.opacity.combined(with: .scale(scale: 0.85)))
                     .help("Saved")
@@ -450,9 +713,23 @@ private struct EditorStatusHeader: View {
             Spacer()
         }
         .padding(.horizontal, 10)
-        .frame(height: 28)
+        .frame(height: 26)
         .background(.bar)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 0.5)
+        }
         .animation(.easeInOut(duration: 0.12), value: isSaved)
+    }
+
+    private var iconName: String {
+        if statusLabel?.contains("PDF") == true { return "doc.richtext" }
+        if statusLabel?.contains("Image") == true { return "photo" }
+        if statusLabel?.contains("Read-only") == true { return "doc.text.magnifyingglass" }
+        if statusLabel?.contains("External") == true { return "doc" }
+        if statusLabel?.contains("No file") == true { return "text.cursor" }
+        return "doc.text"
     }
 }
 
@@ -469,20 +746,20 @@ private struct RightPreviewPane: View {
             Button {
                 isSplit.toggle()
             } label: {
-                Image(systemName: isSplit ? "rectangle.split.1x2" : "rectangle.split.2x1")
+                Image(systemName: isSplit ? "rectangle" : "rectangle.split.1x2")
                     .font(.system(size: 12, weight: .medium))
                     .frame(width: 24, height: 22)
             }
             .buttonStyle(.plain)
-            .help(isSplit ? "Use single preview pane" : "Split preview pane")
-            .accessibilityLabel(isSplit ? "Use single preview pane" : "Split preview pane")
+            .help(isSplit ? "Merge to single preview pane" : "Split preview pane")
+            .accessibilityLabel(isSplit ? "Merge to single preview pane" : "Split preview pane")
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 5))
             .overlay {
                 RoundedRectangle(cornerRadius: 5)
                     .stroke(Color.secondary.opacity(0.22), lineWidth: 0.6)
             }
             .opacity(0.82)
-            .padding(.top, 32)
+            .padding(.top, 30)
             .padding(.trailing, 8)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
@@ -535,18 +812,23 @@ private struct PreviewPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Circle()
-                    .fill(isFocused ? Color.orange : Color.secondary.opacity(0.35))
-                    .frame(width: 7, height: 7)
+                    .fill(isFocused ? Color.accentColor : Color.secondary.opacity(0.35))
+                    .frame(width: 6, height: 6)
                 Text(title)
-                    .font(.caption)
+                    .font(.system(size: 11, weight: isFocused ? .semibold : .regular))
                     .foregroundStyle(isFocused ? .primary : .secondary)
                 Spacer()
             }
             .padding(.horizontal, 10)
-            .frame(height: 28)
+            .frame(height: 26)
             .background(.bar)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color.black.opacity(0.08))
+                    .frame(height: 0.5)
+            }
 
             switch presentation {
             case .pdf(let url):
@@ -562,48 +844,11 @@ private struct PreviewPane: View {
             focusedPane = paneID
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 2)
-                .stroke(isFocused ? Color.orange : Color.clear, lineWidth: 1.25)
-                .padding(1)
+            Rectangle()
+                .stroke(isFocused ? Color.accentColor.opacity(0.55) : Color.clear, lineWidth: 1)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .fixedSize(horizontal: false, vertical: false)
-    }
-}
-
-private struct HistoryPopover: View {
-    var entries: [HistoryEntry]
-    var restore: (HistoryEntry) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("History")
-                .font(.headline)
-                .padding([.horizontal, .top], 12)
-                .padding(.bottom, 6)
-
-            if entries.isEmpty {
-                ContentUnavailableView("No History", systemImage: "clock")
-                    .frame(width: 340, height: 180)
-            } else {
-                List(entries) { entry in
-                    Button {
-                        restore(entry)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(entry.fileName)
-                                .font(.subheadline)
-                                .lineLimit(1)
-                            Text("\(entry.reason) · \(entry.createdAt.formatted(date: .abbreviated, time: .standard))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                .frame(width: 380, height: 320)
-            }
-        }
     }
 }
 
