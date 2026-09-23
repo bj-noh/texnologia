@@ -22,29 +22,35 @@ struct IssueDockView: View {
             compactBar
 
             if isExpanded {
-                Divider()
+                FolioTheme.border.frame(height: 1)
                 IssueNavigatorView(issues: issues, onSelect: onSelect)
             }
         }
-        .background(.bar)
+        .foregroundStyle(FolioTheme.text)
+        .tint(FolioTheme.accent)
+        .background(FolioTheme.surface)
     }
 
     private var compactBar: some View {
         HStack(spacing: 10) {
             Image(systemName: errorCount > 0 ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(errorCount > 0 ? .red : .orange)
+                .font(.system(size: 12))
 
             Text(summaryText)
-                .font(.caption)
-                .fontWeight(.semibold)
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background((errorCount > 0 ? Color.red : Color.orange).opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 5))
 
             if let firstIssue {
                 Text(firstIssue.location.map { "\($0.fileURL.lastPathComponent):\($0.line)" } ?? "Compile")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(FolioTheme.muted)
                 Text(firstIssue.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(FolioTheme.muted)
                     .lineLimit(1)
             }
 
@@ -54,20 +60,21 @@ struct IssueDockView: View {
                 Button {
                     onSelect(firstIssue)
                 } label: {
-                    Label("First", systemImage: "arrowshape.turn.up.right")
+                    Label("Go to first issue", systemImage: "arrow.up.right")
                 }
+                .buttonStyle(FolioSecondaryButtonStyle())
                 .controlSize(.small)
             }
-
             Button {
                 isExpanded.toggle()
             } label: {
                 Label(isExpanded ? "Hide Issues" : "Show Issues", systemImage: isExpanded ? "chevron.down" : "chevron.up")
             }
+            .buttonStyle(FolioSecondaryButtonStyle())
             .controlSize(.small)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
+        .padding(.horizontal, 16)
+        .frame(height: 44)
         .contentShape(Rectangle())
     }
 
@@ -104,13 +111,22 @@ struct IssueNavigatorView: View {
                     }
                     .buttonStyle(.plain)
                     .tag(issue.id)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(selectedIssueID == issue.id ? FolioTheme.accentSoft : Color.clear)
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .padding(.vertical, 6)
+            .background(FolioTheme.sidebar)
             .frame(minWidth: 360)
 
             IssueDetailView(issue: selectedIssue, showsRawLog: $showsRawLog, onSelect: onSelect)
                 .frame(minWidth: 360)
         }
+        .foregroundStyle(FolioTheme.text)
+        .tint(FolioTheme.accent)
+        .background(FolioTheme.surface)
         .onAppear {
             selectedIssueID = selectedIssueID ?? issues.first?.id
         }
@@ -121,23 +137,26 @@ private struct IssueRow: View {
     var issue: BuildIssue
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: issue.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(issue.severity == .error ? .red : .orange)
+                .font(.system(size: 12))
                 .frame(width: 18)
+                .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(issue.message)
-                    .font(.caption)
+                    .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
                 Text(issue.location.map { "\($0.fileURL.lastPathComponent):\($0.line)" } ?? "Compile")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(FolioTheme.muted)
             }
 
             Spacer()
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 5)
     }
 }
 
@@ -147,51 +166,70 @@ private struct IssueDetailView: View {
     var onSelect: (BuildIssue) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
             if let issue {
                 HStack {
                     Label(issue.severity.rawValue.capitalized, systemImage: issue.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(issue.severity == .error ? .red : .orange)
-                        .font(.headline)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background((issue.severity == .error ? Color.red : Color.orange).opacity(0.08),
+                                    in: RoundedRectangle(cornerRadius: 6))
 
                     Spacer()
 
                     Button("Jump to Source") {
                         onSelect(issue)
                     }
+                    .buttonStyle(FolioPrimaryButtonStyle())
                     .disabled(issue.location == nil)
                 }
 
                 Text(issue.message)
-                    .font(.body)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(FolioTheme.text)
+                    .lineSpacing(4)
                     .textSelection(.enabled)
 
                 if let location = issue.location {
                     Text("\(location.fileURL.path):\(location.line):\(location.column)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(FolioTheme.muted)
                         .textSelection(.enabled)
                 }
 
-                DisclosureGroup("Raw Log", isExpanded: $showsRawLog) {
+                DisclosureGroup("Build log", isExpanded: $showsRawLog) {
                     ScrollView {
                         Text(issue.rawLogExcerpt.isEmpty ? "No raw log excerpt was captured." : issue.rawLogExcerpt)
-                            .font(.system(.caption, design: .monospaced))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(FolioTheme.muted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
-                            .padding(8)
+                            .padding(12)
                     }
                     .frame(maxHeight: 120)
-                    .background(Color(nsColor: .textBackgroundColor).opacity(0.65))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .background(FolioTheme.canvas)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(FolioTheme.border, lineWidth: 1))
                 }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(FolioTheme.muted)
             } else {
-                Text("No issue selected.")
-                    .foregroundStyle(.secondary)
+                VStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundStyle(FolioTheme.accent)
+                    Text("Select an issue to see the details.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(FolioTheme.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             Spacer()
         }
-        .padding(12)
+        .padding(20)
+        .background(FolioTheme.surface)
     }
 }

@@ -12,12 +12,13 @@ struct ChatPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            FolioTheme.border.frame(height: 1)
             content
-            Divider()
             inputBar
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .foregroundStyle(FolioTheme.text)
+        .tint(FolioTheme.accent)
+        .background(FolioTheme.surface)
         .background(
             GeometryReader { proxy in
                 Color.clear
@@ -32,11 +33,20 @@ struct ChatPaneView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Image(systemName: "sparkles")
-                .foregroundStyle(.tint)
-            Text("AI Assistant")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(FolioTheme.accent)
+                .frame(width: 30, height: 30)
+                .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("AI Assistant")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(session.isStreaming ? "Working on your request" : "A little help for your next idea")
+                    .font(.system(size: 10))
+                    .foregroundStyle(FolioTheme.muted)
+                    .lineLimit(1)
+            }
             Spacer()
 
             if session.isStreaming {
@@ -45,7 +55,7 @@ struct ChatPaneView: View {
                 } label: {
                     Image(systemName: "stop.circle")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(FolioIconButtonStyle())
                 .help("Stop generating")
             }
 
@@ -54,7 +64,7 @@ struct ChatPaneView: View {
             } label: {
                 Image(systemName: "trash")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(FolioIconButtonStyle())
             .help("Clear conversation")
             .disabled(session.messages.isEmpty)
 
@@ -63,12 +73,12 @@ struct ChatPaneView: View {
             } label: {
                 Image(systemName: "xmark")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(FolioIconButtonStyle())
             .help("Close AI pane")
         }
         .font(.system(size: 11))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     @ViewBuilder
@@ -83,43 +93,52 @@ struct ChatPaneView: View {
     }
 
     private var notConfiguredState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "key.radiowaves.forward")
-                .font(.system(size: 28, weight: .light))
-                .foregroundStyle(.tertiary)
-            Text("No API key is configured.")
+        VStack(spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 25, weight: .regular))
+                .foregroundStyle(FolioTheme.accent)
+                .frame(width: 60, height: 60)
+                .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 16))
+            Text("Make room for a little help.")
+                .font(.system(size: 17, weight: .semibold))
+            Text("Connect your AI provider to ask questions,\nrefine your writing, and edit project files.")
                 .font(.system(size: 12))
-            Text("Add a key under Preferences → AI.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Button("Open Preferences") {
+                .foregroundStyle(FolioTheme.muted)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+            Button("Set up AI Assistant") {
                 openSettings()
             }
-            .controlSize(.small)
-            .padding(.top, 4)
+            .buttonStyle(FolioPrimaryButtonStyle())
+            .padding(.top, 6)
         }
+        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var welcomeState: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             Image(systemName: "sparkles")
-                .font(.system(size: 24, weight: .light))
-                .foregroundStyle(.tint)
-            Text("How can I help?")
-                .font(.system(size: 12, weight: .medium))
-            Text("I can read and edit files in this project.")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 25, weight: .regular))
+                .foregroundStyle(FolioTheme.accent)
+                .frame(width: 60, height: 60)
+                .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 16))
+            Text("What are you working on?")
+                .font(.system(size: 17, weight: .semibold))
+            Text("Ask a question, polish a paragraph,\nor get help with your LaTeX project.")
+                .font(.system(size: 12))
+                .foregroundStyle(FolioTheme.muted)
                 .multilineTextAlignment(.center)
+                .lineSpacing(4)
         }
+        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                LazyVStack(alignment: .leading, spacing: 10) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     ForEach(session.messages) { message in
                         ChatMessageBubble(message: message)
                             .id(message.id)
@@ -132,8 +151,8 @@ struct ChatPaneView: View {
                     }
                     Color.clear.frame(height: 4).id("bottom")
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 18)
             }
             .onChange(of: session.messages.count) { _, _ in
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -143,44 +162,47 @@ struct ChatPaneView: View {
 
     private var inputBar: some View {
         let enabled = session.isConfigured && !session.isStreaming
-        return HStack(alignment: .bottom, spacing: 8) {
-            ChatInputTextView(
-                text: $draft,
-                measuredHeight: $inputHeight,
-                placeholder: "Ask about the project…  (Return to send · Shift+Return for newline)",
-                font: .systemFont(ofSize: 13),
-                minHeight: 42,
-                maxHeight: maxInputHeight,
-                isEnabled: enabled,
-                onSubmit: sendIfReady
-            )
-            .frame(height: clampedInputHeight)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(nsColor: .textBackgroundColor))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 0.6)
-                    )
-            )
-            .opacity(enabled ? 1.0 : 0.55)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 8) {
+                ChatInputTextView(
+                    text: $draft,
+                    measuredHeight: $inputHeight,
+                    placeholder: "Ask about your project…",
+                    font: .systemFont(ofSize: 13),
+                    minHeight: 42,
+                    maxHeight: maxInputHeight,
+                    isEnabled: enabled,
+                    onSubmit: sendIfReady
+                )
+                .frame(height: clampedInputHeight)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .opacity(enabled ? 1.0 : 0.55)
 
-            Button {
-                sendIfReady()
-            } label: {
-                Image(systemName: session.isStreaming ? "ellipsis.circle" : "arrow.up.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundStyle(session.isStreaming ? Color.secondary : Color.accentColor)
+                Button {
+                    sendIfReady()
+                } label: {
+                    Image(systemName: session.isStreaming ? "ellipsis" : "arrow.up")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 16, height: 20)
+                }
+                .buttonStyle(FolioPrimaryButtonStyle())
+                .help("Send message (Return)")
+                .disabled(draft.isEmpty || session.isStreaming || !session.isConfigured)
+                .padding(.trailing, 8)
+                .padding(.bottom, 8)
             }
-            .buttonStyle(.plain)
-            .help("Send message (Return)")
-            .disabled(draft.isEmpty || session.isStreaming || !session.isConfigured)
-            .padding(.bottom, 4)
+            .background(FolioTheme.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(FolioTheme.border, lineWidth: 1))
+
+            Text("Return to send · Shift + Return for a new line")
+                .font(.system(size: 9))
+                .foregroundStyle(FolioTheme.muted)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
     }
 
     private var clampedInputHeight: CGFloat {
@@ -198,18 +220,17 @@ private struct ChatMessageBubble: View {
     let message: ChatMessage
 
     var body: some View {
-        VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+        VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
             Text(message.role == .user ? "You" : "Assistant")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(FolioTheme.muted)
 
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(message.blocks.enumerated()), id: \.offset) { _, block in
                     blockView(for: block)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(bubbleBackground)
@@ -224,6 +245,8 @@ private struct ChatMessageBubble: View {
         case .text(let text):
             Text(text)
                 .font(.system(size: 12))
+                .foregroundStyle(FolioTheme.text)
+                .lineSpacing(4)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         case .toolCall(let call):
@@ -235,8 +258,8 @@ private struct ChatMessageBubble: View {
 
     private var bubbleBackground: Color {
         switch message.role {
-        case .user: return Color.accentColor.opacity(0.14)
-        case .assistant: return Color(nsColor: .controlBackgroundColor).opacity(0.6)
+        case .user: return FolioTheme.accentSoft
+        case .assistant: return FolioTheme.canvas
         case .system: return Color.clear
         }
     }
@@ -250,20 +273,20 @@ private struct ToolCallRow: View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "wrench.adjustable")
                 .font(.system(size: 10))
-                .foregroundStyle(.orange)
+                .foregroundStyle(FolioTheme.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 Text(truncated(inputJSON))
                     .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FolioTheme.muted)
                     .lineLimit(3)
             }
         }
-        .padding(6)
+        .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.orange.opacity(0.08))
+                .fill(FolioTheme.accentSoft)
         )
     }
 
@@ -283,11 +306,11 @@ private struct ToolResultRow: View {
                 .foregroundStyle(isError ? Color.red : Color.green)
             Text(truncated(content))
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(isError ? Color.red : .secondary)
+                .foregroundStyle(isError ? Color.red : FolioTheme.muted)
                 .lineLimit(8)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(6)
+        .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill((isError ? Color.red : Color.green).opacity(0.06))
@@ -306,7 +329,7 @@ private struct StatusRow: View {
             ProgressView().controlSize(.small)
             Text(text)
                 .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FolioTheme.muted)
         }
     }
 }

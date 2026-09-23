@@ -7,61 +7,71 @@ struct PendingEditReviewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider()
+            FolioTheme.border.frame(height: 1)
             hunksList
         }
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor))
-                .shadow(color: Color.black.opacity(0.16), radius: 12, x: 0, y: 4)
+                .fill(FolioTheme.surface)
+                .shadow(color: Color.black.opacity(0.08), radius: 20, x: 0, y: 8)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.accentColor.opacity(0.28), lineWidth: 0.8)
+                .stroke(FolioTheme.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .foregroundStyle(FolioTheme.text)
+        .tint(FolioTheme.accent)
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(FolioTheme.accent)
+                    .frame(width: 32, height: 32)
+                    .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("AI proposed edit")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("\(edit.fileURL.lastPathComponent) · \(edit.hunks.count) hunk\(edit.hunks.count == 1 ? "" : "s") · \(edit.pendingCount) pending")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Review suggested changes")
+                        .font(.system(size: 13, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("\(edit.fileURL.lastPathComponent) · \(edit.hunks.count) change\(edit.hunks.count == 1 ? "" : "s") · \(edit.pendingCount) to review")
+                        .font(.system(size: 10))
+                        .foregroundStyle(FolioTheme.muted)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Button(role: .destructive) {
+                    appModel.discardPendingEdit()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(FolioIconButtonStyle())
+                .controlSize(.small)
+                .help("Discard this proposal without applying any hunk")
             }
 
-            Spacer()
+            HStack(spacing: 8) {
+                Button("Accept All") { appModel.acceptAllPendingHunks() }
+                    .buttonStyle(FolioPrimaryButtonStyle())
+                    .controlSize(.small)
+                    .disabled(edit.pendingCount == 0)
+                    .help("Apply the AI proposal for every pending hunk")
 
-            Button("Accept All") { appModel.acceptAllPendingHunks() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(edit.pendingCount == 0)
-                .help("Apply the AI proposal for every pending hunk")
-
-            Button("Reject All") { appModel.rejectAllPendingHunks() }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(edit.pendingCount == 0)
-                .help("Keep the original content for every pending hunk")
-
-            Button(role: .destructive) {
-                appModel.discardPendingEdit()
-            } label: {
-                Image(systemName: "xmark")
+                Button("Reject All") { appModel.rejectAllPendingHunks() }
+                    .buttonStyle(FolioSecondaryButtonStyle())
+                    .controlSize(.small)
+                    .disabled(edit.pendingCount == 0)
+                    .help("Keep the original content for every pending hunk")
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .help("Discard this proposal without applying any hunk")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
     }
 
     private var hunksList: some View {
@@ -74,6 +84,7 @@ struct PendingEditReviewView: View {
             .padding(16)
         }
         .frame(maxHeight: 620)
+        .background(FolioTheme.canvas)
     }
 }
 
@@ -87,82 +98,88 @@ private struct PendingHunkRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             headerRow
-            Divider()
+            FolioTheme.border.frame(height: 1)
             body(for: hunk.status)
         }
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .textBackgroundColor))
+                .fill(FolioTheme.surface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(borderColor, lineWidth: 0.6)
+                .stroke(borderColor, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .onAppear { initializeIfNeeded() }
     }
 
     private var headerRow: some View {
-        HStack(spacing: 8) {
-            Text(hunk.hunk.header)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(hunk.hunk.header)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(FolioTheme.muted)
+                    .lineLimit(1)
 
-            statusBadge
-
-            Spacer()
+                Spacer(minLength: 0)
+                statusBadge
+            }
 
             if hunk.status == .pending {
-                Button {
-                    let edited = yourVersionText
-                    appModel.updatePendingHunkEdit(id: hunk.id, replacement: edited)
-                    appModel.confirmPendingHunkEdit(id: hunk.id)
-                } label: {
-                    Label("Accept", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(.green)
-                .help("Apply the text in the editable pane below")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], alignment: .leading, spacing: 8) {
+                    Button {
+                        let edited = yourVersionText
+                        appModel.updatePendingHunkEdit(id: hunk.id, replacement: edited)
+                        appModel.confirmPendingHunkEdit(id: hunk.id)
+                    } label: {
+                        Label("Accept", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 11, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FolioPrimaryButtonStyle())
+                    .controlSize(.small)
+                    .help("Apply the text in the editable pane below")
 
-                Button {
-                    yourVersionText = aiSuggestionText
-                } label: {
-                    Label("Use AI", systemImage: "sparkles")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Copy the AI suggestion into the editable pane")
+                    Button {
+                        yourVersionText = aiSuggestionText
+                    } label: {
+                        Label("Use AI", systemImage: "sparkles")
+                            .font(.system(size: 11, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FolioSecondaryButtonStyle())
+                    .controlSize(.small)
+                    .help("Copy the AI suggestion into the editable pane")
 
-                Button {
-                    yourVersionText = originalText
-                } label: {
-                    Label("Reset", systemImage: "arrow.uturn.backward")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Restore the editable pane to the original file content")
+                    Button {
+                        yourVersionText = originalText
+                    } label: {
+                        Label("Reset", systemImage: "arrow.uturn.backward")
+                            .font(.system(size: 11, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FolioSecondaryButtonStyle())
+                    .controlSize(.small)
+                    .help("Restore the editable pane to the original file content")
 
-                Button { appModel.rejectPendingHunk(id: hunk.id) } label: {
-                    Label("Reject", systemImage: "xmark.circle")
-                        .font(.system(size: 11, weight: .medium))
+                    Button { appModel.rejectPendingHunk(id: hunk.id) } label: {
+                        Label("Reject", systemImage: "xmark.circle")
+                            .font(.system(size: 11, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FolioSecondaryButtonStyle())
+                    .controlSize(.small)
+                    .help("Keep the original content and discard this AI change")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(.red)
-                .help("Keep the original content and discard this AI change")
             } else {
                 Button("Reopen") { reopenHunk() }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(FolioSecondaryButtonStyle())
                     .controlSize(.small)
                     .help("Bring this hunk back to pending for another review")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(headerBackground)
     }
 
@@ -181,10 +198,10 @@ private struct PendingHunkRowView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(FolioTheme.accent)
                     Text("AI suggestion")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FolioTheme.muted)
                     Spacer()
                     Button {
                         copyToClipboard(aiSuggestionText)
@@ -193,6 +210,7 @@ private struct PendingHunkRowView: View {
                             .font(.system(size: 10))
                     }
                     .buttonStyle(.borderless)
+                    .tint(FolioTheme.accent)
                     .help("Copy AI suggestion to clipboard")
                 }
 
@@ -204,10 +222,10 @@ private struct PendingHunkRowView: View {
                         .padding(10)
                 }
                 .frame(height: 180)
-                .background(Color(nsColor: .textBackgroundColor))
+                .background(FolioTheme.canvas)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(Color.accentColor.opacity(0.30), lineWidth: 0.8)
+                        .stroke(FolioTheme.border, lineWidth: 1)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
@@ -216,14 +234,14 @@ private struct PendingHunkRowView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "pencil")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.orange)
-                    Text("Your version (editable)")
+                        .foregroundStyle(FolioTheme.accent)
+                    Text("Your version")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FolioTheme.muted)
                     Spacer()
-                    Text(isModifiedFromOriginal ? "modified" : "original")
+                    Text(isModifiedFromOriginal ? "Edited" : "Original · editable")
                         .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(FolioTheme.muted)
                 }
 
                 TextEditor(text: $yourVersionText)
@@ -231,10 +249,10 @@ private struct PendingHunkRowView: View {
                     .frame(height: 220)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(Color(nsColor: .textBackgroundColor))
+                    .background(FolioTheme.surface)
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color.orange.opacity(0.50), lineWidth: 0.8)
+                            .stroke(FolioTheme.accent.opacity(0.45), lineWidth: 1)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
@@ -264,37 +282,37 @@ private struct PendingHunkRowView: View {
 
     private var statusLabel: String {
         switch hunk.status {
-        case .pending: return "PENDING"
-        case .accepted: return "ACCEPTED"
-        case .rejected: return "REJECTED"
-        case .edited: return "EDITED"
+        case .pending: return "To review"
+        case .accepted: return "Accepted"
+        case .rejected: return "Rejected"
+        case .edited: return "Edited"
         }
     }
 
     private var statusColor: Color {
         switch hunk.status {
-        case .pending: return .orange
+        case .pending: return FolioTheme.accent
         case .accepted: return .green
         case .rejected: return .red
-        case .edited: return .accentColor
+        case .edited: return FolioTheme.accent
         }
     }
 
     private var headerBackground: Color {
         switch hunk.status {
-        case .pending: return Color(nsColor: .quaternaryLabelColor).opacity(0.18)
+        case .pending: return FolioTheme.surface
         case .accepted: return Color.green.opacity(0.10)
         case .rejected: return Color.red.opacity(0.08)
-        case .edited: return Color.accentColor.opacity(0.10)
+        case .edited: return FolioTheme.accentSoft
         }
     }
 
     private var borderColor: Color {
         switch hunk.status {
-        case .pending: return Color(nsColor: .separatorColor).opacity(0.5)
+        case .pending: return FolioTheme.border
         case .accepted: return Color.green.opacity(0.35)
         case .rejected: return Color.red.opacity(0.30)
-        case .edited: return Color.accentColor.opacity(0.35)
+        case .edited: return FolioTheme.accent.opacity(0.35)
         }
     }
 
@@ -341,12 +359,12 @@ private struct PendingDiffLineRow: View {
             Text(line.oldLineNumber.map(String.init) ?? "")
                 .frame(width: 32, alignment: .trailing)
                 .padding(.trailing, 4)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(FolioTheme.subtle)
 
             Text(line.newLineNumber.map(String.init) ?? "")
                 .frame(width: 32, alignment: .trailing)
                 .padding(.trailing, 4)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(FolioTheme.subtle)
 
             Text(prefix)
                 .frame(width: 12, alignment: .center)
@@ -377,7 +395,7 @@ private struct PendingDiffLineRow: View {
         switch line.kind {
         case .added: return Color(red: 0.10, green: 0.60, blue: 0.24)
         case .removed: return Color(red: 0.74, green: 0.22, blue: 0.24)
-        case .context: return Color(nsColor: .tertiaryLabelColor)
+        case .context: return FolioTheme.subtle
         }
     }
 
@@ -385,7 +403,7 @@ private struct PendingDiffLineRow: View {
         switch line.kind {
         case .added: return Color(red: 0.06, green: 0.38, blue: 0.14)
         case .removed: return Color(red: 0.52, green: 0.12, blue: 0.14)
-        case .context: return Color(nsColor: .labelColor).opacity(0.82)
+        case .context: return FolioTheme.text
         }
     }
 

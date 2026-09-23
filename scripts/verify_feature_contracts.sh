@@ -28,7 +28,7 @@ require_pattern "TEXnologia/App/AppModel.swift" "case \"png\", \"jpg\", \"jpeg\"
 
 require_pattern "TEXnologia/App/MainWindowView.swift" "CenterPaneView" "center pane dispatcher"
 require_pattern "TEXnologia/App/MainWindowView.swift" "CompileOptionsControl" "attached compile options control"
-require_pattern "TEXnologia/App/MainWindowView.swift" "compileBlue" "muted blue compile button"
+require_pattern "TEXnologia/App/MainWindowView.swift" "FolioTheme.accent" "shared compile accent"
 require_pattern "TEXnologia/App/MainWindowView.swift" ".frame(width: 109)" "compact compile control"
 require_pattern "TEXnologia/App/MainWindowView.swift" "Button(\"Compile\"" "compile button wording"
 require_pattern "TEXnologia/App/MainWindowView.swift" "Compile Settings" "compile settings dropdown tooltip"
@@ -44,8 +44,9 @@ require_pattern "TEXnologia/History/HistoryDiffView.swift" "DiffHunksView" "gith
 require_pattern "TEXnologia/History/HistoryDiffView.swift" "addedBackground" "additions rendered with green background"
 require_pattern "TEXnologia/History/HistoryDiffView.swift" "removedBackground" "removals rendered with red background"
 require_pattern "TEXnologia/App/MainWindowView.swift" "clock.arrow.circlepath" "history icon button"
-require_pattern "TEXnologia/App/MainWindowView.swift" "square.and.arrow.down" "PDF export icon button"
-require_pattern "TEXnologia/App/MainWindowView.swift" "Export PDF" "PDF export tooltip"
+# The original toolbar had no export control; verify the existing export model and save panel.
+require_pattern "TEXnologia/App/AppModel.swift" "canExportFocusedPDF" "focused PDF export availability"
+require_pattern "TEXnologia/App/AppModel.swift" 'panel.prompt = "Export PDF"' "PDF export save panel action"
 require_pattern "TEXnologia/App/AppModel.swift" "exportFocusedPDF" "focused PDF export action"
 require_pattern "TEXnologia/App/AppModel.swift" "NSSavePanel" "PDF export save panel"
 require_pattern "TEXnologia/App/MainWindowView.swift" "RightPreviewPane" "right preview pane"
@@ -59,15 +60,16 @@ require_pattern "TEXnologia/App/AppModel.swift" "prepareEditorForPreviewSelectio
 require_pattern "TEXnologia/App/AppModel.swift" "Editor kept" "preview selection editor preservation status"
 require_pattern "TEXnologia/App/AppModel.swift" "try editorText.write(to: editorFileURL" "save uses editor file, not preview selection"
 require_pattern "TEXnologia/App/MainWindowView.swift" "focusedPane" "preview focus binding"
-require_pattern "TEXnologia/App/MainWindowView.swift" "isFocused ? Color.accentColor" "focused preview accent indicator"
-require_pattern "TEXnologia/App/MainWindowView.swift" ".stroke(isFocused ? Color.accentColor" "focused preview border"
+require_pattern "TEXnologia/App/MainWindowView.swift" ".fill(isFocused ?" "focused preview accent indicator"
+require_pattern "TEXnologia/App/MainWindowView.swift" ".stroke(isFocused ?" "focused preview border"
 require_pattern "TEXnologia/App/MainWindowView.swift" "GeometryReader" "responsive welcome layout"
 require_pattern "TEXnologia/App/MainWindowView.swift" "ScrollView(.vertical)" "welcome overflow protection"
-require_pattern "TEXnologia/App/MainWindowView.swift" "compact(proxy)" "compact welcome sizing"
-require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ProjectSessionsSidebarView" "multi-session explorer"
+require_pattern "TEXnologia/App/MainWindowView.swift" "ViewThatFits(in: .horizontal)" "responsive welcome feature layout"
+# Sessions are selected through SessionTabBar; the legacy sidebar type is not used by the window.
+require_pattern "TEXnologia/App/MainWindowView.swift" "activate: appModel.activateSession" "session tab activation wiring"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ScrollView(.vertical)" "custom explorer scroll layout"
-require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "LazyVStack(alignment: .leading, spacing: 4)" "compact explorer row spacing"
-require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerIconButtonStyle" "modern explorer icon buttons"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "LazyVStack(alignment: .leading" "lazy explorer row layout"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "FolioIconButtonStyle" "shared explorer icon button style"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerStyle.sidebarBackground" "soft explorer sidebar background"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "ExplorerSectionHeader(title: \"Outline\")" "styled outline section"
 require_pattern "TEXnologia/App/MainWindowView.swift" "outlineItems: appModel.currentEditorOutline" "outline follows currently open editor buffer"
@@ -79,8 +81,8 @@ if grep -q 'ExplorerSectionHeader(title: "인용")' "$ROOT_DIR/TEXnologia/Projec
   exit 1
 fi
 require_pattern "TEXnologia/ProjectIndexing/ProjectIndex.swift" "var command: String" "outline stores LaTeX command type"
-require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "RoundedRectangle(cornerRadius: 10" "pill explorer row selection"
-require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" ".padding(.vertical, 2)" "compact explorer row padding"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" ".fill(ExplorerStyle.selectedFill)" "explorer row selection fill"
+require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" ".padding(.vertical, 7)" "readable explorer row padding"
 require_pattern "TEXnologia/ProjectIndexing/ProjectSidebarView.swift" "EmptyExplorerState" "styled empty explorer state"
 require_pattern "TEXnologia/App/MainWindowView.swift" "SessionTabBar" "session tab bar"
 require_pattern "TEXnologia/App/MainWindowView.swift" "New Session" "new session button"
@@ -113,7 +115,7 @@ if grep -q 'untitled.tex' "$ROOT_DIR/TEXnologia/ProjectIndexing/ProjectSidebarVi
   echo "FAIL new file action should not prefill .tex extension" >&2
   exit 1
 fi
-require_pattern "TEXnologia/App/AppModel.swift" "saveSelectedFileAndBuildIfNeeded" "command-s compile on save"
+require_pattern "TEXnologia/App/TEXnologiaApp.swift" "appModel.saveAndCompile()" "command-s saves and compiles independently of the Save button preference"
 require_pattern "TEXnologia/App/TEXnologiaApp.swift" "Save and Compile" "save menu compile wording"
 require_pattern "TEXnologia/App/AppModel.swift" "isEditorSaved" "editor saved-state model"
 require_pattern "TEXnologia/App/AppModel.swift" "fileSaveStates" "explorer save-state model"
@@ -150,7 +152,7 @@ if grep -q 'Label("Zip"' "$ROOT_DIR/TEXnologia/App/MainWindowView.swift"; then
 fi
 require_pattern "TEXnologia/App/MainWindowView.swift" "ReadOnlyTextPreviewPane" "read-only text preview pane"
 require_pattern "TEXnologia/App/MainWindowView.swift" "doc.text.magnifyingglass" "generated text preview icon"
-require_pattern "TEXnologia/App/MainWindowView.swift" "PDFPaneView(documentURL: url)" "center PDF rendering"
+require_pattern "TEXnologia/App/MainWindowView.swift" "PDFPaneView(documentURL: url, refreshID: appModel.pdfBuildRevision)" "center PDF refresh after compilation"
 require_pattern "TEXnologia/App/MainWindowView.swift" "ImagePreviewPane" "image preview pane"
 require_pattern "TEXnologia/App/MainWindowView.swift" ".task(id: fileURL)" "async image preview loading"
 require_pattern "TEXnologia/App/MainWindowView.swift" "editorFileURL: appModel.editorFileURL" "center editor uses dedicated editor file"
@@ -162,16 +164,17 @@ require_pattern "TEXnologia/App/MainWindowView.swift" "Reveal in Finder" "finder
 
 require_pattern "TEXnologia/IssueNavigator/IssueNavigatorView.swift" "IssueDockView" "collapsed issue dock"
 require_pattern "TEXnologia/IssueNavigator/IssueNavigatorView.swift" "Show Issues" "manual issue expansion"
-require_pattern "TEXnologia/IssueNavigator/IssueNavigatorView.swift" "Raw Log" "manual raw log disclosure"
+require_pattern "TEXnologia/IssueNavigator/IssueNavigatorView.swift" 'DisclosureGroup("Build log", isExpanded: $showsRawLog)' "manual raw log disclosure"
 require_pattern "TEXnologia/IssueNavigator/IssueNavigatorView.swift" "Jump to Source" "issue source jump"
 require_pattern "TEXnologia/App/MainWindowView.swift" "shouldShowIssueDock" "issue dock hidden when no actionable issues"
-require_pattern "TEXnologia/App/MainWindowView.swift" "issuePanelExpanded ? 260 : 36" "collapsed issue panel height"
+require_pattern "TEXnologia/App/MainWindowView.swift" "issuePanelExpanded ? 280 : 44" "collapsed issue panel height"
 require_pattern "TEXnologia/App/MainWindowView.swift" ".clipped()" "issue dock clipping guard"
 
 require_pattern "TEXnologia/App/TEXnologiaApp.swift" "toggleFullScreen" "full screen shortcut"
 require_pattern "TEXnologia/App/TEXnologiaApp.swift" ".command, .control" "Control-Command-F shortcut"
 
-require_pattern "TEXnologia/Preferences/PreferencesView.swift" "TabView" "preferences tabs"
+# The same preference panes now use a sidebar instead of a native tab strip.
+require_pattern "TEXnologia/Preferences/PreferencesView.swift" "switch selectedPane" "preferences pane selection"
 require_pattern "TEXnologia/App/AppModel.swift" "SettingsStore.save" "settings persistence"
 require_pattern "Package.swift" "TEXnologia" "renamed executable product"
 require_pattern "scripts/build_app_bundle.sh" "TEXnologia.app" "renamed app bundle"
@@ -199,7 +202,7 @@ require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "static func gutterWid
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "textLeftInset: CGFloat" "editor text inset"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "lineFragmentPadding: CGFloat = 4" "compact editor text left padding"
 require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "override var requiredThickness" "line number ruler reserves space"
-require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "NSColor.separatorColor" "line number gutter separator"
+require_pattern "TEXnologia/Editor/LaTeXEditorView.swift" "separator.stroke()" "line number gutter separator"
 require_pattern "TEXnologia/PDFViewer/PDFPaneView.swift" "NonResizingPDFView" "PDF preview does not request window growth"
 require_pattern "TEXnologia/PDFViewer/PDFPaneView.swift" "PDFDocument(url:" "async PDF document loading"
 require_pattern "TEXnologia/App/MainWindowView.swift" "editorSyntaxMode" "extension-based syntax routing"

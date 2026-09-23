@@ -33,16 +33,18 @@ struct HistoryDiffPopover: View {
                 .frame(width: 240)
                 .background(HistoryDiffStyle.sidebarBackground)
 
-            Divider()
+            FolioTheme.border.frame(width: 1)
 
             VStack(spacing: 0) {
                 diffHeader
-                Divider()
+                FolioTheme.border.frame(height: 1)
                 diffBody
             }
             .frame(maxWidth: .infinity)
         }
         .frame(width: 860, height: 560)
+        .foregroundStyle(FolioTheme.text)
+        .tint(FolioTheme.accent)
         .onAppear {
             let scoped = fileFilteredEntries
             if selectedEntryID == nil || !scoped.contains(where: { $0.id == selectedEntryID }) {
@@ -77,34 +79,48 @@ struct HistoryDiffPopover: View {
 
     private var snapshotList: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Snapshots")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                if let fileURL = currentEditorFileURL {
-                    Text("· \(fileURL.lastPathComponent)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+            HStack(alignment: .top, spacing: 9) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 13))
+                    .foregroundStyle(FolioTheme.accent)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Version history")
+                        .font(.system(size: 12, weight: .semibold))
+                    if let fileURL = currentEditorFileURL {
+                        Text(fileURL.lastPathComponent)
+                            .font(.system(size: 10))
+                            .foregroundStyle(FolioTheme.muted)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
                 Spacer()
                 Text("\(fileFilteredEntries.count)")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(FolioTheme.muted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(FolioTheme.surface, in: RoundedRectangle(cornerRadius: 5))
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 18)
 
             if fileFilteredEntries.isEmpty {
                 Spacer()
-                ContentUnavailableView("No History", systemImage: "clock")
-                    .font(.caption)
+                VStack(spacing: 10) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundStyle(FolioTheme.subtle)
+                    Text("No snapshots yet")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(FolioTheme.muted)
+                }
                 Spacer()
             } else {
                 ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 2) {
+                    LazyVStack(alignment: .leading, spacing: 5) {
                         ForEach(fileFilteredEntries) { entry in
                             SnapshotRow(
                                 entry: entry,
@@ -130,7 +146,7 @@ struct HistoryDiffPopover: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, 10)
                     .padding(.bottom, 8)
                 }
             }
@@ -140,69 +156,76 @@ struct HistoryDiffPopover: View {
     // MARK: - Diff header
 
     private var diffHeader: some View {
-        HStack(spacing: 10) {
-            if let entry = selectedEntry {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.fileName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                    Text("\(entry.reason) · \(entry.createdAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                if let entry = selectedEntry {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(entry.fileName)
+                            .font(.system(size: 15, weight: .semibold))
+                            .lineLimit(1)
+                        Text("\(entry.reason) · \(entry.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.system(size: 10))
+                            .foregroundStyle(FolioTheme.muted)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    DiffStatsBadge(stats: currentStats)
+                } else {
+                    Text("Select a snapshot")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(FolioTheme.muted)
                 }
-            } else {
-                Text("Select a snapshot")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
             }
-
-            Spacer()
 
             if let _ = selectedEntry {
-                DiffStatsBadge(stats: currentStats)
-
-                Picker("", selection: $compareTarget) {
-                    Text("vs Current").tag(HistoryCompareTarget.currentEditor)
-                    if let baseID = baseEntryID,
-                       let baseEntry = fileFilteredEntries.first(where: { $0.id == baseID }) {
-                        Text("vs Base (\(baseEntry.createdAt.formatted(date: .omitted, time: .shortened)))")
-                            .tag(HistoryCompareTarget.base)
+                HStack(spacing: 10) {
+                    Text("Compare with")
+                        .font(.system(size: 10))
+                        .foregroundStyle(FolioTheme.muted)
+                    Picker("", selection: $compareTarget) {
+                        Text("Current document").tag(HistoryCompareTarget.currentEditor)
+                        if let baseID = baseEntryID,
+                           let baseEntry = fileFilteredEntries.first(where: { $0.id == baseID }) {
+                            Text("Base (\(baseEntry.createdAt.formatted(date: .omitted, time: .shortened)))")
+                                .tag(HistoryCompareTarget.base)
+                        }
+                        ForEach(comparisonCandidates, id: \.self) { candidate in
+                            Text(label(for: candidate)).tag(HistoryCompareTarget.snapshot(candidate))
+                        }
                     }
-                    ForEach(comparisonCandidates, id: \.self) { candidate in
-                        Text(label(for: candidate)).tag(HistoryCompareTarget.snapshot(candidate))
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 200)
-                .help("Select what to compare the selected snapshot against")
+                    .labelsHidden()
+                    .frame(width: 190)
+                    .help("Select what to compare the selected snapshot against")
 
-                Menu {
-                    Button("Copy DIF LaTeX to Clipboard") { copyDIFToClipboard() }
-                    Button("Save DIF LaTeX…") { saveDIFToFile() }
-                } label: {
-                    Label("DIF", systemImage: "square.and.arrow.up.on.square")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .menuStyle(.borderlessButton)
-                .controlSize(.small)
-                .fixedSize()
-                .help("Export diff with \\DIFadd / \\DIFdel markup")
+                    Spacer(minLength: 4)
 
-                Button {
-                    if let entry = selectedEntry {
-                        restore(entry)
+                    Menu {
+                        Button("Copy DIF LaTeX to Clipboard") { copyDIFToClipboard() }
+                        Button("Save DIF LaTeX…") { saveDIFToFile() }
+                    } label: {
+                        Label("DIF", systemImage: "square.and.arrow.up")
+                            .font(.system(size: 11, weight: .medium))
                     }
-                } label: {
-                    Label("Restore", systemImage: "arrow.uturn.backward")
-                        .font(.system(size: 11, weight: .medium))
+                    .menuStyle(.borderlessButton)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .foregroundStyle(FolioTheme.muted)
+                    .help("Export diff with \\DIFadd / \\DIFdel markup")
+
+                    Button {
+                        if let entry = selectedEntry {
+                            restore(entry)
+                        }
+                    } label: {
+                        Label("Restore", systemImage: "arrow.uturn.backward")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .buttonStyle(FolioPrimaryButtonStyle())
+                    .controlSize(.small)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(20)
         .background(HistoryDiffStyle.headerBackground)
     }
 
@@ -223,27 +246,36 @@ struct HistoryDiffPopover: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 12) {
             Image(systemName: "clock.arrow.2.circlepath")
-                .font(.system(size: 22, weight: .light))
-                .foregroundStyle(.tertiary)
-            Text("Select a history snapshot to compare it with the current document.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 24, weight: .regular))
+                .foregroundStyle(FolioTheme.accent)
+                .frame(width: 58, height: 58)
+                .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 15))
+            Text("Every version tells a story.")
+                .font(.system(size: 16, weight: .semibold))
+            Text("Choose a snapshot to see what's changed\nin your document.")
+                .font(.system(size: 12))
+                .foregroundStyle(FolioTheme.muted)
                 .multilineTextAlignment(.center)
+                .lineSpacing(4)
                 .frame(maxWidth: 320)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var identicalState: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "equal.circle")
-                .font(.system(size: 22, weight: .light))
-                .foregroundStyle(Color.green.opacity(0.7))
-            Text("No changes.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+        VStack(spacing: 12) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 24, weight: .regular))
+                .foregroundStyle(FolioTheme.accent)
+                .frame(width: 58, height: 58)
+                .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 15))
+            Text("Everything matches.")
+                .font(.system(size: 16, weight: .semibold))
+            Text("These versions have the same content.")
+                .font(.system(size: 12))
+                .foregroundStyle(FolioTheme.muted)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -354,10 +386,10 @@ private struct SnapshotRow: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: isBase ? "flag.fill" : "doc.text")
                 .font(.system(size: 11))
-                .foregroundStyle(isBase ? Color.orange : (isSelected ? Color.accentColor : Color(nsColor: .tertiaryLabelColor)))
+                .foregroundStyle(isBase ? Color.orange : (isSelected ? FolioTheme.accent : FolioTheme.subtle))
                 .frame(width: 14)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 4) {
                     Text(entry.fileName)
                         .font(.system(size: 11, weight: .medium))
@@ -376,7 +408,7 @@ private struct SnapshotRow: View {
 
                 Text("\(entry.reason) · \(entry.createdAt.formatted(.relative(presentation: .named)))")
                     .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FolioTheme.muted)
                     .lineLimit(1)
 
                 if !stats.isIdentical {
@@ -397,11 +429,11 @@ private struct SnapshotRow: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 5)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 10)
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? FolioTheme.accentSoft : Color.clear)
         )
         .contentShape(Rectangle())
     }
@@ -423,8 +455,8 @@ private struct DiffStatsBadge: View {
                     .foregroundStyle(HistoryDiffStyle.removedForeground)
             }
             if stats.isIdentical {
-                Text("identical")
-                    .foregroundStyle(.secondary)
+                Text("No changes")
+                    .foregroundStyle(FolioTheme.muted)
             }
         }
         .font(.system(size: 10, weight: .medium).monospacedDigit())
@@ -432,7 +464,7 @@ private struct DiffStatsBadge: View {
         .padding(.vertical, 3)
         .background(
             Capsule(style: .continuous)
-                .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.35))
+                .fill(FolioTheme.canvas)
         )
     }
 }
@@ -444,14 +476,14 @@ private struct DiffHunksView: View {
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 ForEach(hunks) { hunk in
                     VStack(alignment: .leading, spacing: 0) {
                         Text(hunk.header)
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
                             .foregroundStyle(HistoryDiffStyle.hunkHeaderForeground)
                             .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 8)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(HistoryDiffStyle.hunkHeaderBackground)
 
@@ -461,12 +493,12 @@ private struct DiffHunksView: View {
                     }
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(HistoryDiffStyle.hunkBorder, lineWidth: 0.5)
+                            .stroke(HistoryDiffStyle.hunkBorder, lineWidth: 1)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
             }
-            .padding(12)
+            .padding(18)
         }
     }
 }
@@ -479,12 +511,12 @@ private struct DiffLineRow: View {
             Text(line.oldLineNumber.map(String.init) ?? "")
                 .frame(width: 36, alignment: .trailing)
                 .padding(.trailing, 6)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(FolioTheme.subtle)
 
             Text(line.newLineNumber.map(String.init) ?? "")
                 .frame(width: 36, alignment: .trailing)
                 .padding(.trailing, 6)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(FolioTheme.subtle)
 
             Text(prefix)
                 .frame(width: 14, alignment: .center)
@@ -515,7 +547,7 @@ private struct DiffLineRow: View {
         switch line.kind {
         case .added: return HistoryDiffStyle.addedForeground
         case .removed: return HistoryDiffStyle.removedForeground
-        case .context: return Color(nsColor: .tertiaryLabelColor)
+        case .context: return FolioTheme.subtle
         }
     }
 
@@ -523,7 +555,7 @@ private struct DiffLineRow: View {
         switch line.kind {
         case .added: return HistoryDiffStyle.addedTextForeground
         case .removed: return HistoryDiffStyle.removedTextForeground
-        case .context: return Color(nsColor: .labelColor).opacity(0.82)
+        case .context: return FolioTheme.text
         }
     }
 
@@ -539,9 +571,9 @@ private struct DiffLineRow: View {
 // MARK: - Style
 
 private enum HistoryDiffStyle {
-    static let sidebarBackground = Color(nsColor: .controlBackgroundColor).opacity(0.55)
-    static let headerBackground = Color(nsColor: .windowBackgroundColor).opacity(0.6)
-    static let diffBackground = Color(nsColor: .textBackgroundColor)
+    static let sidebarBackground = FolioTheme.sidebar
+    static let headerBackground = FolioTheme.surface
+    static let diffBackground = FolioTheme.surface
 
     static let addedBackground = Color.green.opacity(0.12)
     static let removedBackground = Color.red.opacity(0.10)
@@ -550,7 +582,7 @@ private enum HistoryDiffStyle {
     static let addedTextForeground = Color(red: 0.06, green: 0.38, blue: 0.14)
     static let removedTextForeground = Color(red: 0.52, green: 0.12, blue: 0.14)
 
-    static let hunkHeaderBackground = Color(nsColor: .quaternaryLabelColor).opacity(0.25)
-    static let hunkHeaderForeground = Color.secondary
-    static let hunkBorder = Color(nsColor: .separatorColor).opacity(0.45)
+    static let hunkHeaderBackground = FolioTheme.canvas
+    static let hunkHeaderForeground = FolioTheme.muted
+    static let hunkBorder = FolioTheme.border
 }

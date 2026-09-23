@@ -1,29 +1,23 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1024" height="1024" rx="184" fill="url(#texnologia-gradient)"/>
-  <ellipse cx="512" cy="482" rx="328" ry="318" fill="white" fill-opacity="0.13"/>
-
-  <path d="M369 174C400 342 624 342 655 174L728 133H296L369 174Z" fill="#12204A" filter="url(#soft-shadow)"/>
-  <circle cx="512" cy="399" r="102" fill="#F5C88F" filter="url(#soft-shadow)"/>
-  <path d="M410 392C420 262 578 244 615 348C579 334 527 328 481 355C454 371 431 382 410 392Z" fill="#0D1835"/>
-  <path d="M365 873C394 628 630 628 659 873H365Z" fill="#111F43" filter="url(#soft-shadow)"/>
-
-  <path d="M430 413C342 454 278 529 220 588" stroke="#F5C88F" stroke-width="56" stroke-linecap="round"/>
-  <path d="M594 413C682 454 746 529 804 588" stroke="#F5C88F" stroke-width="56" stroke-linecap="round"/>
-
-  <rect x="164" y="492" width="696" height="256" rx="56" fill="#FAFBF3" filter="url(#soft-shadow)"/>
-  <rect x="176" y="504" width="672" height="232" rx="46" stroke="#EAB83A" stroke-width="18"/>
-  <circle cx="226" cy="588" r="40" fill="#F5C88F"/>
-  <circle cx="798" cy="588" r="40" fill="#F5C88F"/>
-
-  <text x="512" y="679" text-anchor="middle" font-family="SF Pro Display, Helvetica, Arial, sans-serif" font-size="156" font-weight="900" letter-spacing="4" fill="#12366E">TEX</text>
-
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>TEXnologia folded document icon with TeX wordmark</title>
+  <rect x="82" y="82" width="860" height="860" rx="193" fill="url(#texnologia-blue)" filter="url(#tile-shadow)"/>
+  <rect x="84" y="84" width="856" height="856" rx="191" stroke="white" stroke-opacity=".18" stroke-width="3"/>
+  <g stroke="white" stroke-linecap="round" stroke-linejoin="round" filter="url(#page-shadow)">
+    <path d="M318 782V240H587L715 369V782Z" stroke-width="33"/>
+    <path d="M584 250V369H704" stroke-width="31"/>
+  </g>
+  <!-- TeX letter outlines, matching make_app_icon.swift. -->
+  <path fill="white" d="M464.02 475.89 L464.02 506.33 L461.04 506.33 Q458.38 495.80 455.15 491.19 Q451.91 486.59 446.27 483.85 Q443.12 482.36 435.24 482.36 L426.87 482.36 L426.87 569.12 Q426.87 577.74 427.82 579.90 Q428.77 582.06 431.55 583.67 Q434.33 585.29 439.14 585.29 L442.87 585.29 L442.87 588.36 L383.98 588.36 L383.98 585.29 L387.72 585.29 Q392.61 585.29 395.60 583.55 Q397.75 582.39 399.00 579.57 Q399.91 577.58 399.91 569.12 L399.91 482.36 L391.78 482.36 Q380.42 482.36 375.28 487.17 Q368.06 493.89 366.15 506.33 L363.00 506.33 L363.00 475.89 Z M499.46 520.11 L499.46 565.89 L501.70 565.89 Q512.40 565.89 517.21 559.17 Q522.02 552.46 523.35 539.35 L526.50 539.35 L526.50 598.24 L523.35 598.24 Q522.35 588.62 519.16 582.48 Q515.96 576.34 511.73 574.23 Q507.50 572.11 499.46 572.11 L499.46 603.80 Q499.46 613.09 500.25 615.16 Q501.03 617.23 503.19 618.56 Q505.35 619.89 510.16 619.89 L516.88 619.89 Q532.63 619.89 542.13 612.59 Q551.63 605.29 555.78 590.36 L558.84 590.36 L553.79 626.11 L456.58 626.11 L456.58 623.04 L460.31 623.04 Q465.20 623.04 468.19 621.30 Q470.34 620.14 471.51 617.32 Q472.42 615.33 472.42 606.87 L472.42 532.88 Q472.42 525.25 472.00 523.51 Q471.17 520.61 468.93 519.03 Q465.78 516.71 460.31 516.71 L456.58 516.71 L456.58 513.64 L550.72 513.64 L550.72 546.90 L547.56 546.90 Q545.16 534.71 540.80 529.40 Q536.45 524.09 528.49 521.60 Q523.84 520.11 511.07 520.11 Z M621.23 522.42 L652.25 568.45 Q659.97 579.90 663.24 582.35 Q666.52 584.79 671.00 585.29 L671.00 588.36 L616.17 588.36 L616.17 585.29 Q622.73 584.79 624.63 583.30 Q626.54 581.81 626.54 579.65 Q626.54 578.16 625.96 577.00 Q624.80 574.51 620.16 567.71 L603.73 543.41 L586.56 564.39 Q578.85 573.93 578.85 577.33 Q578.85 579.74 580.84 581.81 Q582.83 583.88 586.73 584.79 Q588.47 585.29 593.86 585.29 L593.86 588.36 L550.65 588.36 L550.65 585.29 Q558.03 584.21 562.26 581.31 Q567.82 577.50 577.77 565.39 L600.08 538.18 L571.47 496.13 Q564.42 485.76 563.42 484.60 Q561.18 481.86 559.03 480.70 Q556.87 479.54 553.06 478.96 L553.06 475.89 L608.88 475.89 L608.88 478.96 L606.06 478.96 Q601.25 478.96 599.34 480.49 Q597.43 482.03 597.43 484.35 Q597.43 486.18 598.01 487.50 L603.73 496.13 L617.67 517.36 L629.53 502.85 Q638.65 491.65 638.65 487.17 Q638.65 484.93 637.37 483.02 Q636.08 481.12 633.68 480.04 Q631.27 478.96 626.21 478.96 L626.21 475.89 L667.60 475.89 L667.60 478.96 Q662.71 479.04 659.72 480.16 Q656.73 481.28 653.33 484.35 Q651.18 486.34 642.55 496.71 Z"/>
   <defs>
-    <linearGradient id="texnologia-gradient" x1="102" y1="82" x2="922" y2="942" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1A3978"/>
-      <stop offset="1" stop-color="#1A9480"/>
+    <linearGradient id="texnologia-blue" x1="220" y1="82" x2="750" y2="942" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#68AEF3"/>
+      <stop offset="1" stop-color="#2363BC"/>
     </linearGradient>
-    <filter id="soft-shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.24"/>
+    <filter id="tile-shadow" x="28" y="45" width="968" height="985" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dy="17" stdDeviation="14" flood-color="#17365D" flood-opacity=".22"/>
+    </filter>
+    <filter id="page-shadow" x="280" y="212" width="473" height="610" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dy="5" stdDeviation="5.5" flood-color="#1D4673" flood-opacity=".22"/>
     </filter>
   </defs>
 </svg>

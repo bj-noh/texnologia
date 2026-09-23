@@ -14,13 +14,17 @@ final class AppModel: ObservableObject {
     @Published var projectIndex: ProjectIndex = .empty
     @Published var buildIssues: [BuildIssue] = []
     @Published var pdfDocumentURL: URL?
+    @Published private(set) var pdfBuildRevision = 0
     @Published var focusedPreviewPane: PreviewPaneID = .primary
     @Published var primaryPreviewPresentation: FilePresentation = .none
     @Published var secondaryPreviewPresentation: FilePresentation = .none
     @Published var editorJump: EditorJump?
     @Published var settings: AppSettings = .default
-    @Published var statusMessage: String = "Drop a LaTeX folder, .tex file, or .zip archive to begin."
+    @Published var statusMessage: String = "Drop a LaTeX folder, .tex or .bib file, or .zip archive to begin."
     @Published var isImporting: Bool = false
+    @Published private(set) var isCompiling = false
+    @Published private(set) var compilingFileName: String?
+    @Published private(set) var isLoadingEditorFile = false
     @Published var history: [HistoryEntry] = []
     @Published var fileSaveStates: [URL: ExplorerSaveState] = [:]
     @Published var isChatPaneVisible: Bool = false
@@ -33,7 +37,14 @@ final class AppModel: ObservableObject {
     private var didRestoreSessionState = false
 
     private let indexer = ProjectIndexer()
-    private let buildService = LatexBuildService()
+    private let buildDocument: (BuildConfiguration) async -> BuildResult
+    private var queuedCompilations: [CompilationRequest] = []
+
+    private struct CompilationRequest {
+        var workspaceID: WorkspaceID
+        var previewPane: PreviewPaneID
+        var configuration: BuildConfiguration
+    }
     private var selectedFileEncoding: String.Encoding = .utf8
     private var fileLoadToken: UInt64 = 0
 
@@ -44,7 +55,7 @@ final class AppModel: ObservableObject {
     }
 
     var canSaveEditorFile: Bool {
-        editorFileURL != nil && selectedFilePresentation == .text
+        editorFileURL != nil && selectedFilePresentation == .text && !isLoadingEditorFile
     }
 
     var isEditorSaved: Bool {
@@ -168,7 +179,14 @@ final class AppModel: ObservableObject {
         statusMessage = "Applied \(accepted) change\(accepted == 1 ? "" : "s"), rejected \(rejected)."
     }
 
-    init() {
+    init(
+        loadPersistedState: Bool = true,
+        buildDocument: @escaping (BuildConfiguration) async -> BuildResult = { configuration in
+            await LatexBuildService().build(configuration: configuration)
+        }
+    ) {
+        self.buildDocument = buildDocument
+        guard loadPersistedState else { return }
         settings = SettingsStore.loadMigratingIfNeeded()
         restoreSessionStateIfNeeded()
         NotificationCenter.default.addObserver(
@@ -209,8 +227,8 @@ final class AppModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [.folder, .texSource, .zipArchive]
-        panel.message = "Choose a LaTeX project folder, a .tex file, or a .zip archive."
+        panel.allowedContentTypes = [.folder, .texSource, .bibSource, .zipArchive]
+        panel.message = "Choose a LaTeX project folder, a .tex or .bib file, or a .zip archive."
         panel.prompt = "Open"
 
         guard panel.runModal() == .OK, let url = panel.url else {
@@ -274,17 +292,31 @@ final class AppModel: ObservableObject {
     }
 
     func openProjectResource(at url: URL) {
+        guard url.isFileURL else { return }
+        let url = url.standardizedFileURL
         var isDirectory: ObjCBool = false
-        FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            statusMessage = "Could not open \(url.lastPathComponent): the file no longer exists."
+            return
+        }
 
         if isDirectory.boolValue {
             openProject(at: url)
         } else if url.pathExtension.lowercased() == "zip" {
             importZipArchive(at: url)
-        } else if url.pathExtension.lowercased() == "tex" {
-            openProject(at: url.deletingLastPathComponent(), preferredMainFile: url)
+        } else if ["tex", "bib"].contains(url.pathExtension.lowercased()) {
+            // Opening another source from Finder must keep its project's main file
+            // and any unsaved editor buffers in the existing session.
+            if !sessions.contains(where: { url.isSameOrDescendant(of: $0.workspace.rootURL) }) {
+                openProject(
+                    at: url.deletingLastPathComponent(),
+                    preferredMainFile: url.pathExtension.lowercased() == "tex" ? url : nil
+                )
+            }
+            selectFile(url)
+            persistSessionStateIfReady()
         } else {
-            statusMessage = "TEXnologia can open folders, .tex files, and .zip archives."
+            statusMessage = "TEXnologia can open folders, .tex and .bib files, and .zip archives."
         }
     }
 
@@ -320,6 +352,7 @@ final class AppModel: ObservableObject {
         fileLoadToken &+= 1
 
         guard let selectedFileURL else {
+            isLoadingEditorFile = false
             editorFileURL = nil
             editorText = ""
             markEditorClean(fileURL: nil, text: "")
@@ -354,6 +387,7 @@ final class AppModel: ObservableObject {
                 return
             }
 
+            isLoadingEditorFile = false
             editorFileURL = nil
             editorText = ""
             markEditorClean(fileURL: nil, text: "")
@@ -367,6 +401,7 @@ final class AppModel: ObservableObject {
     }
 
     private func loadEditableFileAsync(url: URL, token: UInt64) {
+        isLoadingEditorFile = true
         if editorFileURL != url {
             editorText = ""
             markEditorClean(fileURL: nil, text: "")
@@ -375,6 +410,7 @@ final class AppModel: ObservableObject {
         selectedFilePresentation = .text
 
         if let dirtyText = dirtyEditorBuffers[url], let clean = cleanDiskTextByURL[url] {
+            isLoadingEditorFile = false
             editorText = dirtyText
             markEditorClean(fileURL: url, text: clean)
             fileSaveStates[url] = .dirty
@@ -401,6 +437,7 @@ final class AppModel: ObservableObject {
 
     private func applyEditableLoadOutcome(_ outcome: EditableLoadOutcome, for url: URL, token: UInt64) {
         guard fileLoadToken == token, selectedFileURL == url else { return }
+        isLoadingEditorFile = false
         switch outcome {
         case .loaded(let text, let encoding):
             editorFileURL = url
@@ -462,6 +499,7 @@ final class AppModel: ObservableObject {
         guard editorFileURL == url else { return }
 
         if tabs.isEmpty {
+            isLoadingEditorFile = false
             editorFileURL = nil
             editorText = ""
             selectedFilePresentation = .none
@@ -523,6 +561,7 @@ final class AppModel: ObservableObject {
         }
 
         if sessions.isEmpty {
+            isLoadingEditorFile = false
             workspace = nil
             projectIndex = .empty
             selectedFileURL = nil
@@ -746,9 +785,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func saveSelectedFile() {
-        guard let editorFileURL else { return }
-        guard selectedFilePresentation == .text else { return }
+    @discardableResult
+    func saveSelectedFile() -> Bool {
+        guard !isLoadingEditorFile else { return false }
+        guard let editorFileURL else { return false }
+        guard selectedFilePresentation == .text else { return false }
         do {
             captureHistorySnapshot(reason: "Before save")
             try editorText.write(to: editorFileURL, atomically: true, encoding: selectedFileEncoding)
@@ -757,8 +798,10 @@ final class AppModel: ObservableObject {
             dirtyEditorBuffers.removeValue(forKey: editorFileURL)
             fileSaveStates[editorFileURL] = .saved
             statusMessage = "Saved \(editorFileURL.lastPathComponent)."
+            return true
         } catch {
             statusMessage = "Could not save \(editorFileURL.lastPathComponent): \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -778,6 +821,8 @@ final class AppModel: ObservableObject {
     }
 
     func restoreHistoryEntry(_ entry: HistoryEntry) {
+        fileLoadToken &+= 1
+        isLoadingEditorFile = false
         selectedFileURL = entry.fileURL
         editorFileURL = entry.fileURL
         selectedFilePresentation = .text
@@ -793,6 +838,7 @@ final class AppModel: ObservableObject {
     }
 
     private func loadReadOnlyPreview(for url: URL) {
+        isLoadingEditorFile = true
         let token = fileLoadToken
         statusMessage = "Previewing \(url.lastPathComponent)…"
         Task.detached(priority: .userInitiated) { [weak self] in
@@ -808,6 +854,7 @@ final class AppModel: ObservableObject {
 
     private func applyReadOnlyPreviewOutcome(_ outcome: ReadOnlyPreviewOutcome, for url: URL, token: UInt64) {
         guard fileLoadToken == token, selectedFileURL == url else { return }
+        isLoadingEditorFile = false
         editorFileURL = nil
         editorText = ""
         markEditorClean(fileURL: nil, text: "")
@@ -828,10 +875,17 @@ final class AppModel: ObservableObject {
     }
 
     func saveSelectedFileAndBuildIfNeeded() {
-        saveSelectedFile()
+        guard saveSelectedFile() else { return }
         if settings.autoBuildOnSave {
-            compile()
+            requestCompilation()
         }
+    }
+
+    /// The explicit keyboard command always builds after a successful save.
+    func saveAndCompile() {
+        guard !isLoadingEditorFile else { return }
+        if canSaveEditorFile, !saveSelectedFile() { return }
+        requestCompilation()
     }
 
     func build() {
@@ -839,26 +893,77 @@ final class AppModel: ObservableObject {
     }
 
     func compile() {
-        guard let workspace, let mainFileURL = workspace.mainFileURL else { return }
-        saveSelectedFile()
-        statusMessage = "Compiling \(mainFileURL.lastPathComponent)..."
+        saveAndCompile()
+    }
 
-        Task {
-            let configuration = BuildConfiguration.default(
+    private func requestCompilation() {
+        guard !isImporting else { return }
+        guard let workspace, let mainFileURL = workspace.mainFileURL else {
+            if canSaveEditorFile {
+                statusMessage = "Saved. Choose a main .tex file to compile."
+            }
+            return
+        }
+        let request = CompilationRequest(
+            workspaceID: workspace.id,
+            previewPane: focusedPreviewPane,
+            configuration: BuildConfiguration.default(
                 rootFile: mainFileURL,
                 engine: settings.defaultEngine,
                 toolchainYear: settings.toolchainYear,
                 shellEscape: settings.shellEscapeEnabled
             )
-            let result = await buildService.build(configuration: configuration)
-            buildIssues = result.issues
-            pdfDocumentURL = result.pdfURL
-            if let pdfURL = result.pdfURL {
-                showInFocusedPreview(.pdf(pdfURL))
+        )
+
+        if isCompiling {
+            // Keep the latest saved version per project without concurrent TeX processes.
+            if let index = queuedCompilations.firstIndex(where: { $0.workspaceID == request.workspaceID }) {
+                queuedCompilations[index] = request
+            } else {
+                queuedCompilations.append(request)
             }
-            statusMessage = result.succeeded
-                ? "Compile succeeded."
-                : "Compile failed with \(result.issues.count) issue(s)."
+            statusMessage = "Saved. Latest changes will compile next."
+            return
+        }
+
+        isCompiling = true
+        compilingFileName = mainFileURL.lastPathComponent
+        statusMessage = "Compiling \(mainFileURL.lastPathComponent)…"
+        Task { await runCompilations(startingWith: request) }
+    }
+
+    private func runCompilations(startingWith firstRequest: CompilationRequest) async {
+        defer {
+            isCompiling = false
+            compilingFileName = nil
+        }
+        var request = firstRequest
+        while true {
+            compilingFileName = request.configuration.rootFile.lastPathComponent
+            let result = await buildDocument(request.configuration)
+
+            // A build finishing after a project switch must not replace another project's PDF.
+            if workspace?.id == request.workspaceID,
+               workspace?.mainFileURL == request.configuration.rootFile {
+                buildIssues = result.issues
+                pdfDocumentURL = result.pdfURL
+                if let pdfURL = result.pdfURL {
+                    pdfBuildRevision &+= 1
+                    switch request.previewPane {
+                    case .primary: primaryPreviewPresentation = .pdf(pdfURL)
+                    case .secondary: secondaryPreviewPresentation = .pdf(pdfURL)
+                    }
+                }
+                statusMessage = result.succeeded
+                    ? "Compile succeeded."
+                    : "Compile failed with \(result.issues.count) issue(s)."
+            }
+
+            guard !queuedCompilations.isEmpty else { return }
+            request = queuedCompilations.removeFirst()
+            if workspace?.id == request.workspaceID {
+                statusMessage = "Compiling \(request.configuration.rootFile.lastPathComponent)…"
+            }
         }
     }
 
@@ -919,26 +1024,47 @@ final class AppModel: ObservableObject {
 
     private func prepareEditorForPreviewSelection() {
         guard let workspace else { return }
-        if selectedFilePresentation == .text,
+        if !isLoadingEditorFile, selectedFilePresentation == .text,
            let editorFileURL,
            editorFileURL.isInsideOrEqual(to: workspace.rootURL) {
             return
         }
 
-        guard let mainFileURL = workspace.mainFileURL, mainFileURL.isEditableTextFile else { return }
-        if editorFileURL == mainFileURL, selectedFilePresentation == .text { return }
+        guard let mainFileURL = workspace.mainFileURL, mainFileURL.isEditableTextFile else {
+            isLoadingEditorFile = false
+            editorFileURL = nil
+            selectedFilePresentation = .none
+            return
+        }
+        if !isLoadingEditorFile, editorFileURL == mainFileURL, selectedFilePresentation == .text { return }
 
+        isLoadingEditorFile = true
+        let token = fileLoadToken
         let prettify = mainFileURL.pathExtension.lowercased() == "json"
         Task.detached(priority: .userInitiated) { [weak self] in
             let loaded = try? TextFileLoader.loadEditable(url: mainFileURL)
             let text = loaded.map { prettify ? TextFileLoader.prettyPrintedJSONIfPossible($0.text) : $0.text }
-            await self?.applyPreviewEditorPreload(url: mainFileURL, text: text, encoding: loaded?.encoding)
+            await self?.applyPreviewEditorPreload(url: mainFileURL, text: text, encoding: loaded?.encoding, token: token)
         }
     }
 
-    private func applyPreviewEditorPreload(url: URL, text: String?, encoding: String.Encoding?) {
-        guard let text, let encoding else { return }
-        guard let workspace, workspace.mainFileURL == url else { return }
+    private func applyPreviewEditorPreload(url: URL, text: String?, encoding: String.Encoding?, token: UInt64) {
+        guard fileLoadToken == token else { return }
+        guard workspace?.mainFileURL == url else {
+            isLoadingEditorFile = false
+            editorFileURL = nil
+            editorText = ""
+            selectedFilePresentation = .none
+            markEditorClean(fileURL: nil, text: "")
+            prepareEditorForPreviewSelection()
+            return
+        }
+        isLoadingEditorFile = false
+        guard let text, let encoding else {
+            editorFileURL = nil
+            selectedFilePresentation = .none
+            return
+        }
         editorFileURL = url
         editorText = text
         selectedFileEncoding = encoding
@@ -1166,6 +1292,7 @@ final class AppModel: ObservableObject {
 
 private extension UTType {
     static let texSource = UTType(filenameExtension: "tex") ?? .plainText
+    static let bibSource = UTType(filenameExtension: "bib") ?? .plainText
     static let zipArchive = UTType(filenameExtension: "zip") ?? .archive
 }
 

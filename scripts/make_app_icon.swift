@@ -1,174 +1,113 @@
 import AppKit
-import Foundation
+import CoreText
 
-let outputDirectory = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "dist/AppIcon.iconset")
-try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+// Draw every size from vectors so the Dock, Finder, and Retina icons stay crisp.
+// Keep the folded-page mark in sync with TEXnologia/Resources/TEXnologiaIcon.svg.
+let outputDirectory = CommandLine.arguments.dropFirst().first ?? "dist/AppIcon.iconset"
+let outputURL = URL(fileURLWithPath: outputDirectory, isDirectory: true)
+try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
 
-struct IconImage {
-    let filename: String
-    let pixels: Int
+func color(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, _ alpha: CGFloat = 1) -> NSColor {
+    NSColor(srgbRed: red / 255, green: green / 255, blue: blue / 255, alpha: alpha)
 }
 
-let images = [
-    IconImage(filename: "icon_16x16.png", pixels: 16),
-    IconImage(filename: "icon_16x16@2x.png", pixels: 32),
-    IconImage(filename: "icon_32x32.png", pixels: 32),
-    IconImage(filename: "icon_32x32@2x.png", pixels: 64),
-    IconImage(filename: "icon_128x128.png", pixels: 128),
-    IconImage(filename: "icon_128x128@2x.png", pixels: 256),
-    IconImage(filename: "icon_256x256.png", pixels: 256),
-    IconImage(filename: "icon_256x256@2x.png", pixels: 512),
-    IconImage(filename: "icon_512x512.png", pixels: 512),
-    IconImage(filename: "icon_512x512@2x.png", pixels: 1024)
-]
+func texWordmark() -> CGPath {
+    let font = CTFontCreateWithName("TimesNewRomanPS-BoldMT" as CFString, 180, nil)
+    let path = CGMutablePath()
+    var cursor: CGFloat = 0
+    for (character, baseline) in [("T", 0.0), ("E", -40.0), ("X", 0.0)] {
+        var code = character.utf16.first!
+        var glyph: CGGlyph = 0
+        CTFontGetGlyphsForCharacters(font, &code, &glyph, 1)
+        var advance = CGSize.zero
+        CTFontGetAdvancesForGlyphs(font, .horizontal, &glyph, &advance, 1)
+        if let outline = CTFontCreatePathForGlyph(font, glyph, nil) {
+            path.addPath(outline, transform: CGAffineTransform(translationX: cursor, y: baseline))
+        }
+        cursor += advance.width - 18
+    }
+    let bounds = path.boundingBoxOfPath
+    let target = CGRect(x: 363, y: 373, width: 308, height: 200)
+    let scale = min(target.width / bounds.width, target.height / bounds.height)
+    var transform = CGAffineTransform(
+        a: scale, b: 0, c: 0, d: scale,
+        tx: target.midX - bounds.midX * scale,
+        ty: target.midY - bounds.midY * scale
+    )
+    return path.copy(using: &transform)!
+}
 
-for image in images {
-    guard
-        let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: image.pixels,
-            pixelsHigh: image.pixels,
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        )
-    else {
-        throw NSError(domain: "TEXnologia.Icon", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not create bitmap."])
+let wordmark = texWordmark()
+
+func drawIcon(pixels: Int, name: String) throws {
+    guard let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+        isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+    ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+        fatalError("Could not create the icon bitmap.")
     }
 
-    bitmap.size = NSSize(width: image.pixels, height: image.pixels)
-    let previousContext = NSGraphicsContext.current
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-    drawIcon(in: NSRect(x: 0, y: 0, width: image.pixels, height: image.pixels))
-    NSGraphicsContext.current = previousContext
+    bitmap.size = NSSize(width: pixels, height: pixels)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    context.imageInterpolation = .high
+    let cg = context.cgContext
+    let scale = CGFloat(pixels) / 1024
+    cg.scaleBy(x: scale, y: scale)
+    cg.setShouldAntialias(true)
 
-    guard
-        let png = bitmap.representation(using: .png, properties: [:])
-    else {
-        throw NSError(domain: "TEXnologia.Icon", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not render icon."])
+    let tile = NSBezierPath(roundedRect: NSRect(x: 82, y: 82, width: 860, height: 860), xRadius: 193, yRadius: 193)
+    cg.saveGState()
+    cg.setShadow(offset: CGSize(width: 0, height: -17), blur: 28, color: color(23, 54, 93, 0.22).cgColor)
+    color(47, 111, 208).setFill()
+    tile.fill()
+    cg.restoreGState()
+    NSGradient(starting: color(104, 174, 243), ending: color(35, 99, 188))!.draw(in: tile, angle: -62)
+
+    let border = NSBezierPath(roundedRect: NSRect(x: 84, y: 84, width: 856, height: 856), xRadius: 191, yRadius: 191)
+    color(255, 255, 255, 0.18).setStroke()
+    border.lineWidth = 3
+    border.stroke()
+
+    cg.saveGState()
+    cg.setShadow(offset: CGSize(width: 0, height: -5), blur: 11, color: color(29, 70, 115, 0.22).cgColor)
+    let page = NSBezierPath()
+    page.move(to: NSPoint(x: 318, y: 242))
+    page.line(to: NSPoint(x: 318, y: 784))
+    page.line(to: NSPoint(x: 587, y: 784))
+    page.line(to: NSPoint(x: 715, y: 655))
+    page.line(to: NSPoint(x: 715, y: 242))
+    page.close()
+    page.lineWidth = 33
+    page.lineJoinStyle = .round
+    NSColor.white.setStroke()
+    page.stroke()
+
+    let fold = NSBezierPath()
+    fold.move(to: NSPoint(x: 584, y: 774))
+    fold.line(to: NSPoint(x: 584, y: 655))
+    fold.line(to: NSPoint(x: 704, y: 655))
+    fold.lineWidth = 31
+    fold.lineJoinStyle = .round
+    fold.lineCapStyle = .round
+    fold.stroke()
+    cg.restoreGState()
+
+    cg.setFillColor(NSColor.white.cgColor)
+    cg.addPath(wordmark)
+    cg.fillPath()
+    cg.flush()
+    NSGraphicsContext.restoreGraphicsState()
+
+    guard let png = bitmap.representation(using: .png, properties: [:]) else {
+        fatalError("Could not encode the icon PNG.")
     }
-
-    try png.write(to: outputDirectory.appendingPathComponent(image.filename))
+    try png.write(to: outputURL.appendingPathComponent(name))
 }
 
-func drawIcon(in rect: NSRect) {
-    let scale = min(rect.width, rect.height)
-    let bounds = NSRect(x: 0, y: 0, width: scale, height: scale)
-
-    NSGraphicsContext.current?.imageInterpolation = .high
-
-    let background = NSBezierPath(roundedRect: bounds, xRadius: scale * 0.18, yRadius: scale * 0.18)
-    let gradient = NSGradient(colors: [
-        NSColor(red: 0.10, green: 0.22, blue: 0.47, alpha: 1),
-        NSColor(red: 0.10, green: 0.58, blue: 0.50, alpha: 1)
-    ])
-    gradient?.draw(in: background, angle: -45)
-
-    let glow = NSBezierPath(ovalIn: NSRect(x: scale * 0.18, y: scale * 0.16, width: scale * 0.64, height: scale * 0.62))
-    NSColor(calibratedWhite: 1, alpha: 0.13).setFill()
-    glow.fill()
-
-    let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.24)
-    shadow.shadowBlurRadius = scale * 0.035
-    shadow.shadowOffset = NSSize(width: 0, height: -scale * 0.015)
-
-    NSGraphicsContext.saveGraphicsState()
-    shadow.set()
-
-    let torso = NSBezierPath()
-    torso.move(to: NSPoint(x: scale * 0.36, y: scale * 0.17))
-    torso.curve(
-        to: NSPoint(x: scale * 0.64, y: scale * 0.17),
-        controlPoint1: NSPoint(x: scale * 0.39, y: scale * 0.33),
-        controlPoint2: NSPoint(x: scale * 0.61, y: scale * 0.33)
-    )
-    torso.line(to: NSPoint(x: scale * 0.71, y: scale * 0.13))
-    torso.line(to: NSPoint(x: scale * 0.29, y: scale * 0.13))
-    torso.close()
-    NSColor(red: 0.07, green: 0.14, blue: 0.30, alpha: 1).setFill()
-    torso.fill()
-
-    let head = NSBezierPath(ovalIn: NSRect(x: scale * 0.40, y: scale * 0.29, width: scale * 0.20, height: scale * 0.20))
-    NSColor(red: 0.96, green: 0.78, blue: 0.56, alpha: 1).setFill()
-    head.fill()
-
-    NSColor(red: 0.05, green: 0.10, blue: 0.22, alpha: 1).setFill()
-    let hair = NSBezierPath()
-    hair.move(to: NSPoint(x: scale * 0.40, y: scale * 0.39))
-    hair.curve(
-        to: NSPoint(x: scale * 0.58, y: scale * 0.43),
-        controlPoint1: NSPoint(x: scale * 0.41, y: scale * 0.53),
-        controlPoint2: NSPoint(x: scale * 0.56, y: scale * 0.55)
-    )
-    hair.curve(
-        to: NSPoint(x: scale * 0.44, y: scale * 0.48),
-        controlPoint1: NSPoint(x: scale * 0.55, y: scale * 0.45),
-        controlPoint2: NSPoint(x: scale * 0.50, y: scale * 0.49)
-    )
-    hair.curve(
-        to: NSPoint(x: scale * 0.40, y: scale * 0.39),
-        controlPoint1: NSPoint(x: scale * 0.42, y: scale * 0.46),
-        controlPoint2: NSPoint(x: scale * 0.40, y: scale * 0.43)
-    )
-    hair.fill()
-
-    NSGraphicsContext.restoreGraphicsState()
-
-    NSColor(red: 0.96, green: 0.78, blue: 0.56, alpha: 1).setStroke()
-    let leftArm = NSBezierPath()
-    leftArm.lineWidth = scale * 0.055
-    leftArm.lineCapStyle = .round
-    leftArm.move(to: NSPoint(x: scale * 0.42, y: scale * 0.35))
-    leftArm.curve(
-        to: NSPoint(x: scale * 0.22, y: scale * 0.55),
-        controlPoint1: NSPoint(x: scale * 0.33, y: scale * 0.40),
-        controlPoint2: NSPoint(x: scale * 0.27, y: scale * 0.48)
-    )
-    leftArm.stroke()
-
-    let rightArm = NSBezierPath()
-    rightArm.lineWidth = scale * 0.055
-    rightArm.lineCapStyle = .round
-    rightArm.move(to: NSPoint(x: scale * 0.58, y: scale * 0.35))
-    rightArm.curve(
-        to: NSPoint(x: scale * 0.78, y: scale * 0.55),
-        controlPoint1: NSPoint(x: scale * 0.67, y: scale * 0.40),
-        controlPoint2: NSPoint(x: scale * 0.73, y: scale * 0.48)
-    )
-    rightArm.stroke()
-
-    NSGraphicsContext.saveGraphicsState()
-    shadow.set()
-
-    let signRect = NSRect(x: scale * 0.16, y: scale * 0.51, width: scale * 0.68, height: scale * 0.25)
-    let sign = NSBezierPath(roundedRect: signRect, xRadius: scale * 0.055, yRadius: scale * 0.055)
-    NSColor(red: 0.97, green: 0.98, blue: 0.95, alpha: 1).setFill()
-    sign.fill()
-    NSColor(red: 0.92, green: 0.72, blue: 0.22, alpha: 1).setStroke()
-    sign.lineWidth = scale * 0.018
-    sign.stroke()
-    NSGraphicsContext.restoreGraphicsState()
-
-    NSColor(red: 0.96, green: 0.78, blue: 0.56, alpha: 1).setFill()
-    NSBezierPath(ovalIn: NSRect(x: scale * 0.18, y: scale * 0.52, width: scale * 0.08, height: scale * 0.08)).fill()
-    NSBezierPath(ovalIn: NSRect(x: scale * 0.74, y: scale * 0.52, width: scale * 0.08, height: scale * 0.08)).fill()
-
-    let text = "TEX" as NSString
-    let paragraph = NSMutableParagraphStyle()
-    paragraph.alignment = .center
-    let attributes: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: scale * 0.145, weight: .black),
-        .foregroundColor: NSColor(red: 0.07, green: 0.21, blue: 0.43, alpha: 1),
-        .paragraphStyle: paragraph,
-        .kern: scale * 0.004
-    ]
-    text.draw(
-        in: NSRect(x: signRect.minX, y: signRect.minY + scale * 0.048, width: signRect.width, height: signRect.height * 0.68),
-        withAttributes: attributes
-    )
+for size in [16, 32, 128, 256, 512] {
+    try drawIcon(pixels: size, name: "icon_\(size)x\(size).png")
+    try drawIcon(pixels: size * 2, name: "icon_\(size)x\(size)@2x.png")
 }
+print("Created TEXnologia icon PNGs in \(outputURL.path)")

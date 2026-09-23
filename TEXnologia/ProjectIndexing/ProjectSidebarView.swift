@@ -34,7 +34,7 @@ struct ProjectSidebarView: View {
             explorerHeader
 
             ScrollView(.vertical) {
-                LazyVStack(alignment: .leading, spacing: 4) {
+                LazyVStack(alignment: .leading, spacing: 3) {
                     if let rootURL {
                         FileTreeHeader(rootURL: rootURL, saveState: saveState(for: rootURL))
                             .padding(.horizontal, 12)
@@ -90,7 +90,7 @@ struct ProjectSidebarView: View {
                     if !outlineItems.isEmpty {
                         ExplorerSectionHeader(title: "Outline")
                             .padding(.horizontal, 12)
-                            .padding(.top, 8)
+                            .padding(.top, 22)
 
                         ForEach(outlineItems) { item in
                             Button {
@@ -104,7 +104,7 @@ struct ProjectSidebarView: View {
                             }
                             .buttonStyle(.plain)
                             .padding(.horizontal, 12)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(ExplorerStyle.primaryText)
                         }
                     }
                 }
@@ -155,10 +155,12 @@ struct ProjectSidebarView: View {
     }
 
     private var explorerHeader: some View {
-        HStack(spacing: 12) {
-            Text("Project")
-                .font(.system(size: 12, weight: .semibold))
+        HStack(spacing: 2) {
+            Text("PROJECT")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.5)
                 .foregroundStyle(ExplorerStyle.mutedText)
+                .fixedSize(horizontal: true, vertical: false)
 
             Spacer()
 
@@ -180,14 +182,14 @@ struct ProjectSidebarView: View {
                 reloadTree()
                 onRefreshProject(nil, selectedFileURL)
             } label: {
-                Image(systemName: "line.3.horizontal.decrease")
+                Image(systemName: "arrow.clockwise")
             }
             .help("Refresh Explorer")
         }
-        .buttonStyle(ExplorerIconButtonStyle())
-        .padding(.horizontal, 12)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
+        .buttonStyle(FolioIconButtonStyle(size: 26))
+        .padding(.horizontal, 14)
+        .padding(.top, 15)
+        .padding(.bottom, 12)
     }
 
     private func outlineIconName(for command: String) -> String {
@@ -534,7 +536,8 @@ struct ProjectSessionsSidebarView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(.thinMaterial)
+        .background(ExplorerStyle.sidebarBackground)
+        .tint(FolioTheme.accent)
         .onAppear(perform: reload)
         .onChange(of: sessions) { _, _ in reload() }
     }
@@ -587,16 +590,18 @@ struct ProjectSessionsSidebarView: View {
 
     private func sessionHeader(_ session: WorkspaceSession) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: session.id == activeWorkspaceID ? "shippingbox.fill" : "shippingbox")
-                .foregroundStyle(session.id == activeWorkspaceID ? Color.accentColor : Color.secondary)
+            Image(systemName: session.id == activeWorkspaceID ? "folder.fill" : "folder")
+                .foregroundStyle(session.id == activeWorkspaceID ? FolioTheme.accent : FolioTheme.muted)
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.workspace.displayName)
+                    .font(.system(size: 12))
                     .fontWeight(session.id == activeWorkspaceID ? .semibold : .regular)
+                    .foregroundStyle(FolioTheme.text)
                     .lineLimit(1)
                 Text(session.workspace.mainFileURL?.lastPathComponent ?? "No main file")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FolioTheme.muted)
                     .lineLimit(1)
             }
             Spacer()
@@ -669,6 +674,7 @@ private struct ExplorerNodeRow: View {
     var makeMain: (URL) -> Void = { _ in }
     var mainFileURL: URL? = nil
     var handleDrop: ([NSItemProvider], URL) -> Bool
+    @State private var isHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -727,13 +733,13 @@ private struct ExplorerNodeRow: View {
     }
 
     private var rowLabel: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             chevronSlot
             ExplorerSaveStateDot(state: saveState(for: node.url))
 
             Image(systemName: node.iconName)
                 .font(.system(size: ExplorerStyle.iconFontSize, weight: .regular))
-                .foregroundStyle(node.isDirectory ? ExplorerStyle.folderIcon : ExplorerStyle.fileIcon)
+                .foregroundStyle(selectedFileURL == node.url ? ExplorerStyle.accent : (node.isDirectory ? ExplorerStyle.folderIcon : ExplorerStyle.fileIcon))
                 .frame(width: ExplorerStyle.iconSlotWidth, height: ExplorerStyle.iconSlotWidth)
 
             if renamingURL == node.url {
@@ -746,8 +752,8 @@ private struct ExplorerNodeRow: View {
                 .frame(minWidth: 72, maxWidth: .infinity)
             } else {
                 Text(node.url.lastPathComponent)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(ExplorerStyle.primaryText)
+                    .font(.system(size: 12, weight: selectedFileURL == node.url ? .medium : .regular))
+                    .foregroundStyle(selectedFileURL == node.url ? ExplorerStyle.accent : ExplorerStyle.primaryText)
                     .lineLimit(1)
             }
 
@@ -759,11 +765,12 @@ private struct ExplorerNodeRow: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 7)
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .background(rowBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .onHover { isHovered = $0 }
         .onTapGesture {
             if node.isDirectory {
                 toggleExpanded()
@@ -806,11 +813,14 @@ private struct ExplorerNodeRow: View {
     @ViewBuilder
     private var rowBackground: some View {
         if dropTarget == node.url {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(ExplorerStyle.dropFill)
         } else if selectedFileURL == node.url {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(ExplorerStyle.selectedFill)
+        } else if isHovered {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(FolioTheme.accentSoft.opacity(0.6))
         } else {
             Color.clear
         }
@@ -873,9 +883,9 @@ private struct ExplorerSaveStateDot: View {
     private var color: Color {
         switch state {
         case .dirty:
-            return .orange
+            return Color(red: 0.76, green: 0.56, blue: 0.31)
         case .saved:
-            return .green
+            return Color(red: 0.52, green: 0.68, blue: 0.59)
         }
     }
 
@@ -894,12 +904,14 @@ private struct ExplorerSectionHeader: View {
 
     var body: some View {
         HStack {
-            Text(title)
+            Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold))
+                .tracking(1.5)
                 .foregroundStyle(ExplorerStyle.mutedText)
             Spacer()
         }
-        .padding(.top, 4)
+        .padding(.horizontal, 6)
+        .padding(.bottom, 8)
     }
 }
 
@@ -907,17 +919,18 @@ private struct ExplorerMetadataRow: View {
     var title: String
     var iconName: String
     var accessory: String?
+    @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: iconName)
-                .font(.system(size: 10, weight: .regular))
-                .foregroundStyle(ExplorerStyle.fileIcon)
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(isHovered ? ExplorerStyle.accent : ExplorerStyle.fileIcon)
                 .frame(width: 14)
 
             Text(title)
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(ExplorerStyle.primaryText)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(isHovered ? ExplorerStyle.accent : ExplorerStyle.primaryText)
                 .lineLimit(1)
 
             Spacer(minLength: 6)
@@ -929,66 +942,58 @@ private struct ExplorerMetadataRow: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(isHovered ? FolioTheme.accentSoft : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 }
 
 private struct EmptyExplorerState: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "folder")
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(ExplorerStyle.folderIcon)
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: "folder.badge.plus")
+                .font(.system(size: 19, weight: .light))
+                .foregroundStyle(ExplorerStyle.accent)
+                .frame(width: 40, height: 40)
+                .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 10))
 
             Text("Open a project")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(ExplorerStyle.primaryText)
 
-            Text("Open a LaTeX folder, a .tex file, or a .zip to see it here.")
-                .font(.system(size: 10, weight: .regular))
+            Text("Your files and document outline will appear here. Open a folder, .tex file, or .zip to begin.")
+                .font(.system(size: 11, weight: .regular))
+                .lineSpacing(4)
                 .foregroundStyle(ExplorerStyle.mutedText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
+        .padding(17)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(ExplorerStyle.selectedFill)
+                .fill(FolioTheme.surface)
         )
-    }
-}
-
-private struct ExplorerIconButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(ExplorerStyle.iconButton)
-            .frame(width: 22, height: 22)
-            .background(
-                Circle()
-                    .fill(configuration.isPressed ? ExplorerStyle.selectedFill : Color.clear)
-            )
-            .contentShape(Circle())
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(FolioTheme.border, lineWidth: 1))
     }
 }
 
 private enum ExplorerStyle {
-    static let sidebarBackground = Color(nsColor: .controlBackgroundColor).opacity(0.82)
-    static let separator = Color(nsColor: .separatorColor).opacity(0.35)
-    static let selectedFill = Color(nsColor: .quaternaryLabelColor).opacity(0.22)
-    static let dropFill = Color.accentColor.opacity(0.16)
-    static let primaryText = Color(nsColor: .labelColor).opacity(0.86)
-    static let mutedText = Color(nsColor: .secondaryLabelColor)
-    static let folderIcon = Color(nsColor: .secondaryLabelColor)
-    static let fileIcon = Color(nsColor: .tertiaryLabelColor)
-    static let iconButton = Color(nsColor: .secondaryLabelColor)
-    static let accent = Color.orange.opacity(0.9)
-    static let chevron = Color(nsColor: .tertiaryLabelColor)
+    static let sidebarBackground = FolioTheme.sidebar
+    static let separator = FolioTheme.border
+    static let selectedFill = FolioTheme.accentSoft
+    static let dropFill = FolioTheme.accent.opacity(0.2)
+    static let primaryText = FolioTheme.text
+    static let mutedText = FolioTheme.muted
+    static let folderIcon = FolioTheme.accent.opacity(0.8)
+    static let fileIcon = FolioTheme.muted
+    static let accent = FolioTheme.accent
+    static let chevron = FolioTheme.subtle
     static let indentStep: CGFloat = 14
     static let chevronSlotWidth: CGFloat = 12
-    static let iconSlotWidth: CGFloat = 14
-    static let iconFontSize: CGFloat = 11
+    static let iconSlotWidth: CGFloat = 16
+    static let iconFontSize: CGFloat = 12
 }
 
 private final class ProjectDirectoryMonitor {
@@ -1098,7 +1103,7 @@ private struct PendingCreationRow: View {
             Spacer()
         }
         .padding(.horizontal, 6)
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(ExplorerStyle.selectedFill)
@@ -1117,7 +1122,9 @@ private struct InlineRenameTextField: NSViewRepresentable {
         textField.isBordered = true
         textField.isBezeled = true
         textField.drawsBackground = true
-        textField.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        textField.font = .systemFont(ofSize: 12)
+        textField.backgroundColor = FolioTheme.nsSurface
+        textField.textColor = NSColor(FolioTheme.text)
         textField.stringValue = text
         textField.onCommit = commit
         textField.onCancel = cancel
@@ -1291,7 +1298,9 @@ private struct FileTreeHeader: View {
                 .lineLimit(1)
             Spacer()
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 7)
+        .padding(.top, 2)
+        .padding(.bottom, 12)
     }
 }
 

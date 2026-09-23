@@ -16,7 +16,13 @@ struct TEXnologiaApp: App {
         WindowGroup {
             MainWindowView()
                 .environmentObject(appModel)
+                .onOpenURL { url in
+                    appModel.openProjectResource(at: url)
+                }
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
+        .defaultSize(width: 1440, height: 940)
+        .handlesExternalEvents(matching: ["*"])
         .commands {
             CommandGroup(after: .newItem) {
                 Button("Open Project...") {
@@ -32,9 +38,10 @@ struct TEXnologiaApp: App {
 
             CommandGroup(replacing: .saveItem) {
                 Button("Save and Compile") {
-                    appModel.saveSelectedFileAndBuildIfNeeded()
+                    appModel.saveAndCompile()
                 }
                 .keyboardShortcut("s", modifiers: [.command])
+                .disabled(appModel.isLoadingEditorFile || (!appModel.canSaveEditorFile && appModel.workspace?.mainFileURL == nil))
             }
 
             CommandGroup(after: .windowSize) {

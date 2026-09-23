@@ -34,11 +34,17 @@ struct MainWindowView: View {
                     isExpanded: $issuePanelExpanded,
                     onSelect: appModel.jumpToIssue
                 )
-                .frame(height: issuePanelExpanded ? 260 : 36)
+                .frame(height: issuePanelExpanded ? 280 : 44)
                 .clipped()
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            workspaceFooter
         }
+        .background(FolioTheme.canvas)
+        .foregroundStyle(FolioTheme.text)
+        .tint(FolioTheme.accent)
+        .accentColor(FolioTheme.accent)
         .preferredColorScheme(appModel.settings.appearance.colorScheme)
         .animation(.easeInOut(duration: 0.16), value: issuePanelExpanded)
         .animation(.easeInOut(duration: 0.16), value: shouldShowIssueDock)
@@ -61,14 +67,6 @@ struct MainWindowView: View {
                 createEmpty: appModel.createEmptyProjectPanel
             )
 
-            EditorTabBar(
-                tabs: appModel.currentOpenEditorTabs,
-                activeURL: appModel.editorFileURL,
-                saveStates: appModel.fileSaveStates,
-                activate: appModel.activateEditorTab,
-                close: appModel.closeEditorTab
-            )
-
             HSplitView {
                 ProjectSidebarView(
                     index: appModel.projectIndex,
@@ -86,10 +84,19 @@ struct MainWindowView: View {
                     onExternalProjectChange: appModel.refreshProjectFromDisk,
                     onStatus: appModel.setStatus
                 )
-                .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
+                .folioPane()
+                .frame(minWidth: 200, idealWidth: 220, maxWidth: 320)
                 .layoutPriority(0)
 
-                CenterPaneView(
+                VStack(spacing: 0) {
+                    EditorTabBar(
+                        tabs: appModel.currentOpenEditorTabs,
+                        activeURL: appModel.editorFileURL,
+                        saveStates: appModel.fileSaveStates,
+                        activate: appModel.activateEditorTab,
+                        close: appModel.closeEditorTab
+                    )
+                    CenterPaneView(
                     presentation: appModel.selectedFilePresentation,
                     selectedFileURL: appModel.selectedFileURL,
                     editorFileURL: appModel.editorFileURL,
@@ -101,9 +108,11 @@ struct MainWindowView: View {
                     ),
                     settings: appModel.settings,
                     jump: appModel.editorJump
-                )
-                .frame(minWidth: 420, idealWidth: 720)
-                .layoutPriority(2)
+                    )
+                }
+                .folioPane()
+                .frame(minWidth: 360, idealWidth: 620)
+                .layoutPriority(1)
 
                 RightPreviewPane(
                     focusedPane: $appModel.focusedPreviewPane,
@@ -111,7 +120,8 @@ struct MainWindowView: View {
                     secondaryPresentation: appModel.secondaryPreviewPresentation,
                     isSplit: $rightPaneSplit
                 )
-                .frame(minWidth: 320, idealWidth: 480)
+                .folioPane()
+                .frame(minWidth: 280, idealWidth: 480)
                 .layoutPriority(1)
 
                 if appModel.isChatPaneVisible {
@@ -122,12 +132,15 @@ struct MainWindowView: View {
                             set: { appModel.isChatPaneVisible = $0 }
                         )
                     )
-                    .frame(minWidth: 300, idealWidth: 360, maxWidth: 520)
+                    .folioPane()
+                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 520)
                     .layoutPriority(1)
                     .transition(.move(edge: .trailing))
                 }
             }
             .background(SplitViewDividerHitExpander(extraHitAreaOnEachSide: 7))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
     }
 
@@ -138,22 +151,25 @@ struct MainWindowView: View {
     }
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
-            TEXnologiaMarkView(size: 26)
-
-            Text(appModel.workspace?.displayName ?? "TEXnologia")
-                .font(.system(size: 13, weight: .semibold))
-                .tracking(0.1)
-
-            if appModel.workspace != nil {
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.25))
-                    .frame(width: 1, height: 14)
+        HStack(spacing: 16) {
+            HStack(spacing: 9) {
+                TEXnologiaMarkView(size: 34)
+                (Text("texnologia") + Text(".").foregroundColor(FolioTheme.accent))
+                    .font(.system(size: 23, weight: .bold))
+                    .tracking(-1)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("TEXnologia")
 
-            Text(appModel.statusMessage)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            Rectangle()
+                .fill(FolioTheme.border)
+                .frame(width: 1, height: 22)
+
+            Text(appModel.workspace?.displayName ?? "LaTeX for Mac")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(FolioTheme.muted)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -164,6 +180,7 @@ struct MainWindowView: View {
             } label: {
                 Image(systemName: "tray.and.arrow.down")
             }
+            .buttonStyle(FolioIconButtonStyle())
             .help("Save")
             .accessibilityLabel("Save")
             .disabled(!appModel.canSaveEditorFile)
@@ -173,6 +190,7 @@ struct MainWindowView: View {
             } label: {
                 Image(systemName: "clock.arrow.circlepath")
             }
+            .buttonStyle(FolioIconButtonStyle())
             .help("History")
             .accessibilityLabel("History")
             .popover(isPresented: $historyPresented) {
@@ -193,26 +211,54 @@ struct MainWindowView: View {
                 }
             } label: {
                 Image(systemName: appModel.isChatPaneVisible ? "sparkles.rectangle.stack.fill" : "sparkles")
-                    .foregroundStyle(appModel.isChatPaneVisible ? Color.accentColor : Color.primary)
+                    .foregroundStyle(appModel.isChatPaneVisible ? FolioTheme.accent : FolioTheme.muted)
             }
+            .buttonStyle(FolioIconButtonStyle())
             .help("AI Assistant")
             .accessibilityLabel("AI Assistant")
 
             CompileOptionsControl(
                 settings: $appModel.settings,
-                canCompile: appModel.workspace?.mainFileURL != nil && !appModel.isImporting,
+                canCompile: appModel.workspace?.mainFileURL != nil && !appModel.isImporting && !appModel.isLoadingEditorFile,
+                isCompiling: appModel.isCompiling,
+                compilingFileName: appModel.compilingFileName,
                 compile: appModel.compile,
                 persistSettings: { appModel.updateSettings(appModel.settings) }
             )
         }
-        .padding(.horizontal, 12)
-        .frame(height: 44)
-        .background(.bar)
+        .padding(.horizontal, 24)
+        .frame(height: 66)
+        .background(FolioTheme.surface)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.black.opacity(0.08))
-                .frame(height: 0.5)
+                .fill(FolioTheme.border)
+                .frame(height: 1)
         }
+    }
+
+    private var workspaceFooter: some View {
+        HStack(spacing: 8) {
+            Circle().fill(FolioTheme.accent.opacity(0.65)).frame(width: 5, height: 5)
+            Text(appModel.statusMessage)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(appModel.statusMessage)
+            Spacer(minLength: 20)
+            if appModel.editorFileURL != nil {
+                Text("\(appModel.editorText.components(separatedBy: .newlines).count) lines")
+                Text("·")
+                Text("\(appModel.editorText.count) characters")
+                Rectangle().fill(FolioTheme.border).frame(width: 1, height: 10)
+            }
+            Text("LaTeX + AI")
+                .tracking(0.3)
+        }
+        .font(.system(size: 10))
+        .foregroundStyle(FolioTheme.muted)
+        .padding(.horizontal, 24)
+        .frame(height: 34)
+        .background(FolioTheme.surface)
+        .overlay(alignment: .top) { FolioTheme.border.frame(height: 1) }
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -247,27 +293,56 @@ struct MainWindowView: View {
     }
 }
 
-private struct CompileOptionsControl: View {
+struct CompileOptionsControl: View {
     @Binding var settings: AppSettings
     var canCompile: Bool
+    var isCompiling: Bool
+    var compilingFileName: String?
     var compile: () -> Void
     var persistSettings: () -> Void
     @State private var showsCompileSettings = false
-    private let compileBlue = Color(red: 0.20, green: 0.36, blue: 0.58)
+    private let compileAccent = FolioTheme.accent
 
     var body: some View {
+        HStack(spacing: 10) {
+            if isCompiling {
+                HStack(spacing: 7) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(FolioTheme.accent)
+                        .frame(width: 14, height: 14)
+                    Text("컴파일 중")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(FolioTheme.accent)
+                .padding(.horizontal, 11)
+                .frame(height: 30)
+                .background(FolioTheme.accentSoft, in: Capsule())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("컴파일 중")
+                .help("Compiling \(compilingFileName ?? "your document"). New saves will compile next.")
+                .transition(.opacity)
+            }
+            compileButtons
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .animation(.easeInOut(duration: 0.15), value: isCompiling)
+    }
+
+    private var compileButtons: some View {
         HStack(spacing: 0) {
             Button("Compile") {
                 compile()
             }
             .keyboardShortcut("b", modifiers: [.command])
-            .disabled(!canCompile)
+            .disabled(!canCompile || isCompiling)
             .help(compileHelpText)
             .buttonStyle(.plain)
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(canCompile ? Color.white : Color.secondary)
-            .frame(width: 82, height: 24)
-            .background(canCompile ? compileBlue : Color.secondary.opacity(0.14))
+            .foregroundStyle(canCompile ? FolioTheme.onAccent : FolioTheme.muted)
+            .frame(width: 82, height: 34)
+            .background(canCompile ? compileAccent : Color.secondary.opacity(0.14))
+            .opacity(isCompiling ? 0.55 : 1)
 
             Rectangle()
                 .fill(Color.white.opacity(canCompile ? 0.30 : 0.08))
@@ -278,9 +353,9 @@ private struct CompileOptionsControl: View {
             } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(canCompile ? Color.white : Color.secondary)
-                    .frame(width: 26, height: 24)
-                    .background(canCompile ? compileBlue : Color.secondary.opacity(0.14))
+                    .foregroundStyle(canCompile ? FolioTheme.onAccent : FolioTheme.muted)
+                    .frame(width: 26, height: 34)
+                    .background(canCompile ? compileAccent : Color.secondary.opacity(0.14))
             }
             .buttonStyle(.plain)
             .help("Compile Settings")
@@ -292,7 +367,7 @@ private struct CompileOptionsControl: View {
                 )
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
         .frame(width: 109)
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -388,23 +463,23 @@ private struct SessionTabBar: View {
                         activate(session.id)
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: isActive ? "shippingbox.fill" : "shippingbox")
+                            Image(systemName: isActive ? "folder.fill" : "folder")
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(isActive ? Color.accentColor : .secondary)
+                                .foregroundStyle(isActive ? FolioTheme.accent : .secondary)
                             Text(session.workspace.displayName)
                                 .font(.system(size: 11, weight: isActive ? .semibold : .regular))
                                 .foregroundStyle(isActive ? .primary : .secondary)
                                 .lineLimit(1)
                         }
                         .padding(.horizontal, 10)
-                        .frame(height: 24)
+                        .frame(height: 30)
                         .background(
                             RoundedRectangle(cornerRadius: 5)
-                                .fill(isActive ? Color.accentColor.opacity(0.12) : Color.clear)
+                                .fill(isActive ? FolioTheme.accentSoft : Color.clear)
                         )
                         .overlay {
                             RoundedRectangle(cornerRadius: 5)
-                                .stroke(Color.accentColor.opacity(isActive ? 0.35 : 0), lineWidth: 0.6)
+                                .stroke(FolioTheme.accent.opacity(isActive ? 0.20 : 0), lineWidth: 1)
                         }
                     }
                     .buttonStyle(.plain)
@@ -446,15 +521,15 @@ private struct SessionTabBar: View {
                 .help("New Session")
                 .accessibilityLabel("New Session")
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
         }
         .scrollIndicators(.never)
-        .background(.bar)
+        .background(FolioTheme.canvas)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.black.opacity(0.08))
-                .frame(height: 0.5)
+                .fill(FolioTheme.border)
+                .frame(height: 1)
         }
     }
 }
@@ -477,14 +552,14 @@ private struct EditorTabBar: View {
                     }
                 }
                 .padding(.horizontal, 6)
-                .padding(.vertical, 3)
+                .padding(.vertical, 6)
             }
             .scrollIndicators(.never)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            .background(FolioTheme.sidebar)
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(Color.black.opacity(0.06))
-                    .frame(height: 0.5)
+                    .fill(FolioTheme.border)
+                    .frame(height: 1)
             }
         }
     }
@@ -499,7 +574,7 @@ private struct EditorTabBar: View {
                 .fill(state == .dirty ? Color.orange : Color.green.opacity(0.85))
                 .frame(width: 5, height: 5)
             Text(url.lastPathComponent)
-                .font(.system(size: 10, weight: isActive ? .semibold : .regular))
+                .font(.system(size: 11, weight: isActive ? .semibold : .regular))
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .lineLimit(1)
             Button {
@@ -515,14 +590,14 @@ private struct EditorTabBar: View {
             .help("Close \(url.lastPathComponent)")
         }
         .padding(.horizontal, 8)
-        .frame(height: 22)
+        .frame(height: 28)
         .background(
             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(isActive ? Color.accentColor.opacity(0.10) : Color.clear)
+                .fill(isActive ? FolioTheme.accentSoft : Color.clear)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .stroke(Color.accentColor.opacity(isActive ? 0.28 : 0), lineWidth: 0.6)
+                .stroke(FolioTheme.accent.opacity(isActive ? 0.20 : 0), lineWidth: 1)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -574,13 +649,13 @@ private struct CenterPaneView: View {
                 .buttonStyle(.plain)
                 .help(isSplit ? "Merge to single editor pane" : "Split editor pane")
                 .accessibilityLabel(isSplit ? "Merge to single editor pane" : "Split editor pane")
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 5))
+                .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 5))
                 .overlay {
                     RoundedRectangle(cornerRadius: 5)
                         .stroke(Color.secondary.opacity(0.22), lineWidth: 0.6)
                 }
                 .opacity(0.82)
-                .padding(.top, 3)
+                .padding(.top, 9)
                 .padding(.trailing, 8)
             }
         }
@@ -598,7 +673,7 @@ private struct CenterPaneView: View {
             )
 
             ZStack {
-                Color(nsColor: .textBackgroundColor)
+                FolioTheme.surface
                     .ignoresSafeArea(.container, edges: .all)
 
                 body(for: presentation)
@@ -640,7 +715,7 @@ private struct CenterPaneView: View {
         case .readOnlyText(let preview):
             ReadOnlyTextPreviewPane(preview: preview)
         case .pdf(let url):
-            PDFPaneView(documentURL: url)
+            PDFPaneView(documentURL: url, refreshID: appModel.pdfBuildRevision)
         case .image(let url):
             ImagePreviewPane(fileURL: url)
         case .external(let url):
@@ -689,6 +764,7 @@ private struct EditorStatusHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            Text("SOURCE").font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(FolioTheme.subtle)
             Image(systemName: iconName)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -720,13 +796,14 @@ private struct EditorStatusHeader: View {
 
             Spacer()
         }
-        .padding(.horizontal, 10)
-        .frame(height: 26)
-        .background(.bar)
+        .padding(.leading, 14)
+        .padding(.trailing, 40)
+        .frame(height: 40)
+        .background(FolioTheme.surface)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.black.opacity(0.08))
-                .frame(height: 0.5)
+                .fill(FolioTheme.border)
+                .frame(height: 1)
         }
         .animation(.easeInOut(duration: 0.12), value: isSaved)
     }
@@ -762,13 +839,13 @@ private struct RightPreviewPane: View {
             .buttonStyle(.plain)
             .help(isSplit ? "Merge to single preview pane" : "Split preview pane")
             .accessibilityLabel(isSplit ? "Merge to single preview pane" : "Split preview pane")
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 5))
+            .background(FolioTheme.surface, in: RoundedRectangle(cornerRadius: 5))
             .overlay {
                 RoundedRectangle(cornerRadius: 5)
                     .stroke(Color.secondary.opacity(0.22), lineWidth: 0.6)
             }
             .opacity(0.82)
-            .padding(.top, 30)
+            .padding(.top, 49)
             .padding(.trailing, 8)
         }
         .overlay(alignment: .topLeading) {
@@ -780,7 +857,7 @@ private struct RightPreviewPane: View {
                     appModel.syncTeXReverse()
                 }
             }
-            .padding(.top, 30)
+            .padding(.top, 49)
             .padding(.leading, 8)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
@@ -822,6 +899,7 @@ private struct RightPreviewPane: View {
 }
 
 private struct PreviewPane: View {
+    @EnvironmentObject private var appModel: AppModel
     var paneID: PreviewPaneID
     var title: String
     var presentation: FilePresentation
@@ -835,25 +913,25 @@ private struct PreviewPane: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(isFocused ? Color.accentColor : Color.secondary.opacity(0.35))
+                    .fill(isFocused ? FolioTheme.accent : Color.secondary.opacity(0.35))
                     .frame(width: 6, height: 6)
                 Text(title)
                     .font(.system(size: 11, weight: isFocused ? .semibold : .regular))
                     .foregroundStyle(isFocused ? .primary : .secondary)
                 Spacer()
             }
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-            .background(.bar)
+            .padding(.horizontal, 14)
+            .frame(height: 40)
+            .background(FolioTheme.surface)
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(Color.black.opacity(0.08))
-                    .frame(height: 0.5)
+                    .fill(FolioTheme.border)
+                    .frame(height: 1)
             }
 
             switch presentation {
             case .pdf(let url):
-                PDFPaneView(documentURL: url)
+                PDFPaneView(documentURL: url, refreshID: appModel.pdfBuildRevision)
             case .image(let url):
                 ImagePreviewPane(fileURL: url)
             default:
@@ -866,7 +944,7 @@ private struct PreviewPane: View {
         }
         .overlay {
             Rectangle()
-                .stroke(isFocused ? Color.accentColor.opacity(0.55) : Color.clear, lineWidth: 1)
+                .stroke(isFocused ? FolioTheme.accent.opacity(0.18) : Color.clear, lineWidth: 1)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .fixedSize(horizontal: false, vertical: false)
@@ -917,7 +995,7 @@ private struct ReadOnlyTextPreviewPane: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(.bar)
+            .background(FolioTheme.surface)
 
             ScrollView([.vertical]) {
                 Text(preview.text)
@@ -926,7 +1004,7 @@ private struct ReadOnlyTextPreviewPane: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(14)
             }
-            .background(Color(nsColor: .textBackgroundColor))
+            .background(FolioTheme.surface)
         }
     }
 
@@ -993,11 +1071,11 @@ private struct ImagePreviewPane: View {
             }
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .background(.bar)
+            .background(FolioTheme.surface)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .fixedSize(horizontal: false, vertical: false)
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(FolioTheme.surface)
         .task(id: fileURL) {
             image = nil
             isLoading = true
@@ -1042,7 +1120,7 @@ private struct FilePlaceholderView: View {
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(FolioTheme.surface)
     }
 }
 
@@ -1056,7 +1134,7 @@ private extension AppAppearance {
     }
 }
 
-private struct WelcomeDropView: View {
+struct WelcomeDropView: View {
     var isDropTarget: Bool
     var statusMessage: String
     var openProject: () -> Void
@@ -1065,127 +1143,178 @@ private struct WelcomeDropView: View {
     var body: some View {
         GeometryReader { proxy in
             ScrollView(.vertical) {
-                VStack(spacing: compact(proxy) ? 12 : 18) {
-                    TEXnologiaMarkView(size: compact(proxy) ? 62 : 84)
-
-                    VStack(spacing: 5) {
-                        Text("TEXnologia")
-                            .font(.system(size: compact(proxy) ? 27 : 34, weight: .semibold, design: .rounded))
-                            .lineLimit(1)
-                        Text(statusMessage)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
+                VStack(spacing: 0) {
+                    HStack(spacing: 7) {
+                        Circle().fill(FolioTheme.accent.opacity(0.65)).frame(width: 5, height: 5)
+                        Text("A LITTLE SPACE FOR BIG IDEAS")
+                            .tracking(2)
                     }
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(FolioTheme.accent)
+                    .padding(.bottom, 18)
 
-                    VStack(spacing: 10) {
-                        Button {
-                            openProject()
-                        } label: {
-                            Label("Open Folder or File", systemImage: "folder.badge.plus")
-                                .frame(minWidth: 210)
-                        }
-                        .controlSize(.large)
-
-                        Button {
-                            importZip()
-                        } label: {
-                            Label("Import Zip", systemImage: "archivebox")
-                                .frame(minWidth: 210)
-                        }
-                        .controlSize(.large)
-                    }
-
-                    Text("Drag a LaTeX folder, .tex file, or .zip archive here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    (Text("Room to think. ") + Text("Space to write.").foregroundColor(FolioTheme.accent))
+                        .font(.system(size: proxy.size.width < 600 ? 27 : 35, weight: .semibold))
+                        .tracking(-1.2)
                         .multilineTextAlignment(.center)
-                        .lineLimit(2)
+                        .padding(.bottom, 12)
+
+                    Text("Write LaTeX, see your ideas take shape, and refine them with AI.\nYour projects, all together in a quiet workspace.")
+                        .font(.system(size: 13))
+                        .lineSpacing(6)
+                        .foregroundStyle(FolioTheme.muted)
+                        .multilineTextAlignment(.center)
+
+                    WelcomeManuscriptPreview()
+                        .padding(.top, 28)
+                        .padding(.bottom, 20)
+
+                    Button(action: openProject) {
+                        VStack(spacing: 10) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 21, weight: .light))
+                                .foregroundStyle(FolioTheme.accent)
+                                .frame(width: 46, height: 46)
+                                .background(FolioTheme.accentSoft, in: RoundedRectangle(cornerRadius: 13))
+                            Text("Bring your next idea here")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(FolioTheme.text)
+                            Text("Drop a LaTeX folder, .tex or .bib file, or .zip archive")
+                                .font(.system(size: 11))
+                                .foregroundStyle(FolioTheme.muted)
+                            HStack(spacing: 6) {
+                                Text("Open Folder or File")
+                                Image(systemName: "arrow.right")
+                                Text("⌘O").font(.system(size: 10, design: .monospaced))
+                                    .padding(.leading, 8)
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(FolioTheme.accent)
+                            .padding(.top, 3)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                        .background(isDropTarget ? FolioTheme.accentSoft : FolioTheme.surface.opacity(0.75))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(FolioTheme.accent.opacity(isDropTarget ? 0.9 : 0.32), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open Folder or File")
+
+                    Button(action: importZip) {
+                        Label("Import Zip Archive", systemImage: "archivebox")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(FolioTheme.accent)
+                            .padding(12)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 5)
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 24) { features }
+                        VStack(spacing: 10) { features }
+                    }
+                    .font(.system(size: 10))
+                    .foregroundStyle(FolioTheme.muted)
+                    .padding(.top, 10)
+
+                    Text("Local files. Thoughtful tools. Your own AI provider.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(FolioTheme.subtle)
+                        .padding(.top, 24)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, compact(proxy) ? 16 : 28)
-                .frame(minHeight: proxy.size.height, maxHeight: .infinity)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: 654)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 32)
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
             .scrollIndicators(.automatic)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(isDropTarget ? Color.accentColor : Color.clear, lineWidth: 3)
-                .padding(16)
-        )
+        .background {
+            RadialGradient(colors: [FolioTheme.accentSoft.opacity(0.55), FolioTheme.canvas], center: .init(x: 0.5, y: 0.35), startRadius: 0, endRadius: 540)
+        }
     }
 
-    private func compact(_ proxy: GeometryProxy) -> Bool {
-        proxy.size.height < 430 || proxy.size.width < 520
+    @ViewBuilder
+    private var features: some View {
+        Label("Native editing", systemImage: "checkmark")
+        Label("Local PDF compilation", systemImage: "checkmark")
+        Label("AI, with your approval", systemImage: "checkmark")
+    }
+}
+
+private struct WelcomeManuscriptPreview: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("WRITE", systemImage: "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 9, weight: .medium)).tracking(1.5)
+                    .foregroundStyle(FolioTheme.subtle)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(verbatim: #"\section{A world of possibility}"#).foregroundStyle(FolioTheme.accent)
+                    Text("Every idea begins with a line.")
+                    Text(verbatim: #"\[ E = mc^2 \]"#).foregroundStyle(FolioTheme.accent)
+                }
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(FolioTheme.muted)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, minHeight: 152, alignment: .leading)
+            .background(FolioTheme.sidebar)
+
+            FolioTheme.border.frame(width: 1)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Label("PREVIEW", systemImage: "book")
+                    .font(.system(size: 9, weight: .medium)).tracking(1.5)
+                    .foregroundStyle(FolioTheme.subtle)
+                Text("A world of possibility")
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                    .foregroundStyle(FolioTheme.text)
+                Text("Every idea begins with a line.")
+                    .font(.system(size: 10)).foregroundStyle(FolioTheme.muted)
+                Text("E = mc²")
+                    .font(.system(size: 20, design: .serif)).italic()
+                    .foregroundStyle(FolioTheme.accent)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, minHeight: 152, alignment: .leading)
+            .background(FolioTheme.surface)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(FolioTheme.border, lineWidth: 1) }
+        .overlay {
+            Image(systemName: "arrow.right")
+                .font(.system(size: 11))
+                .foregroundStyle(FolioTheme.subtle)
+                .frame(width: 28, height: 28)
+                .background(FolioTheme.surface, in: Circle())
+                .overlay { Circle().strokeBorder(FolioTheme.border, lineWidth: 1) }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Example: LaTeX source and its typeset preview")
     }
 }
 
 private struct TEXnologiaMarkView: View {
     var size: CGFloat
+    var body: some View { FolioDocumentMark(size: size).accessibilityLabel("TEXnologia") }
+}
 
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.18)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.10, green: 0.22, blue: 0.47), Color(red: 0.10, green: 0.58, blue: 0.50)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            Circle()
-                .fill(.white.opacity(0.12))
-                .frame(width: size * 0.66, height: size * 0.66)
-                .offset(y: size * 0.03)
-
-            Capsule()
-                .fill(Color(red: 0.96, green: 0.78, blue: 0.56))
-                .frame(width: size * 0.07, height: size * 0.30)
-                .rotationEffect(.degrees(44))
-                .offset(x: -size * 0.20, y: size * 0.05)
-
-            Capsule()
-                .fill(Color(red: 0.96, green: 0.78, blue: 0.56))
-                .frame(width: size * 0.07, height: size * 0.30)
-                .rotationEffect(.degrees(-44))
-                .offset(x: size * 0.20, y: size * 0.05)
-
-            Circle()
-                .fill(Color(red: 0.96, green: 0.78, blue: 0.56))
-                .frame(width: size * 0.20, height: size * 0.20)
-                .offset(y: size * 0.13)
-
-            RoundedRectangle(cornerRadius: size * 0.05)
-                .fill(Color(red: 0.05, green: 0.10, blue: 0.22))
-                .frame(width: size * 0.28, height: size * 0.16)
-                .offset(y: size * 0.20)
-
-            RoundedRectangle(cornerRadius: size * 0.05)
-                .fill(Color(red: 0.07, green: 0.14, blue: 0.30))
-                .frame(width: size * 0.36, height: size * 0.24)
-                .offset(y: size * 0.28)
-
-            RoundedRectangle(cornerRadius: size * 0.055)
-                .fill(Color(red: 0.97, green: 0.98, blue: 0.95))
-                .overlay(
-                    RoundedRectangle(cornerRadius: size * 0.055)
-                        .stroke(Color(red: 0.92, green: 0.72, blue: 0.22), lineWidth: max(size * 0.018, 1))
-                )
-                .frame(width: size * 0.68, height: size * 0.25)
-                .offset(y: -size * 0.12)
-
-            Text("TEX")
-                .font(.system(size: size * 0.13, weight: .black, design: .rounded))
-                .foregroundStyle(Color(red: 0.07, green: 0.21, blue: 0.43))
-                .offset(y: -size * 0.12)
-        }
-        .frame(width: size, height: size)
-        .shadow(color: .black.opacity(0.16), radius: size * 0.06, x: 0, y: size * 0.03)
-        .accessibilityLabel("TEXnologia")
+private extension View {
+    func folioPane() -> some View {
+        self
+            .background(FolioTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(FolioTheme.border, lineWidth: 1).allowsHitTesting(false) }
+            .padding(.horizontal, 4)
     }
 }
 
@@ -1198,15 +1327,15 @@ private struct SyncArrowButton: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(FolioTheme.accent)
                 .frame(width: 28, height: 28)
                 .background(
                     Circle()
-                        .fill(.thinMaterial)
+                        .fill(FolioTheme.surface)
                 )
                 .overlay(
                     Circle()
-                        .stroke(Color.accentColor.opacity(0.45), lineWidth: 0.8)
+                        .stroke(FolioTheme.border, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)

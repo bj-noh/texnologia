@@ -6,9 +6,13 @@
 
 Write LaTeX in a fast native editor, compile locally, preview the PDF, and let the AI assistant revise your manuscript through an inline diff you control. Every provider you care about — Anthropic, OpenAI, Gemini, Grok, DeepSeek, Mistral, Groq, or local Ollama — just paste your token.
 
-![TEXnologia hero shot](assets/texnologia-fullscreen0.png)
+![TEXnologia light workspace](assets/texnologia-fullscreen0.png)
 ![TEXnologia welcome screen](assets/texnologia-fullscreen1.png)
-![TEXnologia with project explorer, editor, PDF preview, and AI pane](assets/texnologia-fullscreen2.png)
+![TEXnologia dark workspace with project explorer, editor, PDF preview, and AI pane](assets/texnologia-fullscreen2.png)
+
+## Design
+
+The interface follows Folio's visual language with TEXnologia's blue palette: a blue folded-page icon, light surfaces, fine borders, and a quieter writing workspace. The welcome screen, project explorer, source editor, PDF preview, AI assistant, revision review, history, and preferences share one adaptive light/dark palette. Editing, compilation, keyboard shortcuts, settings, and project storage retain their existing behavior.
 
 ## Why
 
@@ -40,7 +44,9 @@ Most LaTeX tools are either cloud SaaS (ongoing fees, your drafts on someone els
 open dist/TEXnologia.app
 ```
 
-Drop a folder with `.tex` files onto the welcome screen, or press `Cmd+O` to open one. Press `Cmd+S` to save and compile.
+Drop a project folder, `.tex` file, or `.bib` file onto the welcome screen, or press `Cmd+O` to open one. The app bundle supports opening `.tex` and `.bib` documents from Finder; files belonging to an open project reuse its session and preserve unsaved edits.
+
+Press `Cmd+S` to save and compile, regardless of the Save button preference. During a build, a spinning indicator and “컴파일 중” label appear beside Compile. Saving again queues one follow-up build with the latest saved changes.
 
 Requires **macOS 14+**, a TeX Live install (MacTeX or BasicTeX — biber and latexmk recommended), and Swift 5.9+ for building from source.
 
@@ -64,7 +70,7 @@ Proposed edits never touch your buffer directly. They're staged as an inline dif
 | --- | --- |
 | `Cmd-O` / `Shift-Cmd-O` | Open project / import .zip |
 | `Cmd-S` | Save and compile |
-| `Cmd-B` | Compile |
+| `Cmd-B` | Compile (saves the current source first) |
 | `Cmd-F` | Find |
 | `Cmd-/` | Toggle line comment |
 | `Cmd-L` | Select line |
@@ -86,6 +92,7 @@ Shell escape is off by default. Enable it per project under **Settings → Compi
 swift run TEXnologia              # run in development
 ./scripts/build_app_bundle.sh     # produce dist/TEXnologia.app
 ./.build/debug/TEXnologia --run-tests   # run the internal test suite
+python3 scripts/verify_compile_workflow.py --real-tex  # isolated save/build/PDF checks
 ```
 
 The test suite runs entirely in-process (no XCTest dependency) and currently covers 230+ cases across history diff logic, SyncTeX parsing, math-hover detection, and line/column computation.
@@ -111,4 +118,4 @@ scripts/            Build and verification scripts
 
 ## Notes
 
-Independent project. Does not copy the branding, UI, icons, or proprietary names of any existing LaTeX editor. References the broad functional category of professional LaTeX writing tools while defining its own direction.
+Independent LaTeX editor. The visual design and folded-page icon are adapted from this author's Folio project; the application name, native Swift architecture, and existing LaTeX workflow remain TEXnologia.

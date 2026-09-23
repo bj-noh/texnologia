@@ -9,7 +9,7 @@ required_editor_patterns=(
   "WrappingTextView"
   "LineNumberRulerView"
   "minGutterWidth: CGFloat"
-  "NSColor.separatorColor"
+  "separator.stroke()"
   "textLeftInset: CGFloat"
   "hasVerticalRuler = true"
   "hasHorizontalScroller = false"

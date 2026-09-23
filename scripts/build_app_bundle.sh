@@ -49,6 +49,101 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>TeX Source Document</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Default</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>tex</string>
+      </array>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.tug.tex</string>
+        <string>com.folio.tex-source</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>BibTeX Bibliography</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Default</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>bib</string>
+      </array>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.tug.tex.bibtex</string>
+      </array>
+    </dict>
+  </array>
+  <!-- Import the shared TeXShop/BibDesk types without claiming general text files. -->
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.tug.tex</string>
+      <key>UTTypeDescription</key>
+      <string>TeX Source Document</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.text</string>
+        <string>public.plain-text</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>tex</string>
+        </array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.tug.tex.bibtex</string>
+      <key>UTTypeDescription</key>
+      <string>BibTeX Bibliography</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.text</string>
+        <string>public.plain-text</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>bib</string>
+        </array>
+      </dict>
+    </dict>
+    <!-- Existing Folio installations identify .tex files with this narrow alias. -->
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>com.folio.tex-source</string>
+      <key>UTTypeDescription</key>
+      <string>TeX Source Document</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.plain-text</string>
+        <string>public.source-code</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>tex</string>
+        </array>
+      </dict>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST

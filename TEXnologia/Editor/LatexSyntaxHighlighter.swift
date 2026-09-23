@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 enum EditorSyntaxMode: Equatable {
     case latex
@@ -423,20 +424,31 @@ extension EditorTheme {
     var palette: EditorPalette {
         switch self {
         case .system:
+            func syntaxColor(_ light: UInt32, _ dark: UInt32) -> NSColor {
+                NSColor(name: nil) { appearance in
+                    let value = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+                    return NSColor(
+                        srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
+                        green: CGFloat((value >> 8) & 0xFF) / 255,
+                        blue: CGFloat(value & 0xFF) / 255,
+                        alpha: 1
+                    )
+                }
+            }
             return EditorPalette(
-                background: .textBackgroundColor,
-                foreground: .labelColor,
-                command: .systemBlue,
-                comment: NSColor(red: 0.00, green: 0.42, blue: 0.18, alpha: 1),
-                brace: .secondaryLabelColor,
-                math: .systemOrange,
-                citation: NSColor(red: 0.32, green: 0.68, blue: 0.42, alpha: 1),
-                bibEntryType: .systemPurple,
-                bibCitationKey: .systemTeal,
-                bibFieldName: .systemBlue,
-                bibString: .systemBrown,
-                invisible: .tertiaryLabelColor,
-                insertionPoint: .labelColor
+                background: FolioTheme.nsSurface,
+                foreground: NSColor(FolioTheme.text),
+                command: NSColor(FolioTheme.accent),
+                comment: syntaxColor(0x657B6C, 0x90B69F),
+                brace: syntaxColor(0x6C7B8E, 0x9EB2C8),
+                math: syntaxColor(0x926B45, 0xD3AF7D),
+                citation: syntaxColor(0x597D6D, 0x98C2AD),
+                bibEntryType: NSColor(FolioTheme.accent),
+                bibCitationKey: syntaxColor(0x537B88, 0x8CB7C3),
+                bibFieldName: NSColor(FolioTheme.accent),
+                bibString: syntaxColor(0x926B45, 0xD3AF7D),
+                invisible: NSColor(FolioTheme.subtle),
+                insertionPoint: NSColor(FolioTheme.accent)
             )
         case .paper:
             return EditorPalette(

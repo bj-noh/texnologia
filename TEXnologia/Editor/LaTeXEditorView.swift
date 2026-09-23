@@ -9,7 +9,7 @@ private enum EditorLayout {
     static let gutterRightPadding: CGFloat = 16
     static let textLeftInset: CGFloat = 32
     static let textRightInset: CGFloat = 16
-    static let textVerticalInset: CGFloat = 12
+    static let textVerticalInset: CGFloat = 24
     static let lineFragmentPadding: CGFloat = 4
 
     static func gutterWidth(for maxLine: Int) -> CGFloat {
@@ -264,6 +264,10 @@ struct LaTeXEditorView: NSViewRepresentable {
             textView.insertionPointColor = settings.editorTheme.palette.insertionPoint
             textView.backgroundColor = settings.editorTheme.palette.background
             textView.textColor = settings.editorTheme.palette.foreground
+            textView.selectedTextAttributes = [
+                .backgroundColor: settings.editorTheme.palette.command.withAlphaComponent(0.16),
+                .foregroundColor: settings.editorTheme.palette.foreground
+            ]
             textView.drawsBackground = true
             textView.enclosingScrollView?.backgroundColor = settings.editorTheme.palette.background
 
@@ -452,7 +456,7 @@ fileprivate final class LineNumberRulerView: NSRulerView {
         backgroundColor.setFill()
         bounds.fill()
 
-        NSColor.separatorColor.withAlphaComponent(0.25).setStroke()
+        (textView.textColor ?? .labelColor).withAlphaComponent(0.08).setStroke()
         let separator = NSBezierPath()
         separator.move(to: NSPoint(x: bounds.maxX - 0.5, y: bounds.minY))
         separator.line(to: NSPoint(x: bounds.maxX - 0.5, y: bounds.maxY))
@@ -464,8 +468,8 @@ fileprivate final class LineNumberRulerView: NSRulerView {
         guard glyphRange.location < layoutManager.numberOfGlyphs else { return }
 
         let numberAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor.tertiaryLabelColor
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular),
+            .foregroundColor: (textView.textColor ?? .labelColor).withAlphaComponent(0.36)
         ]
 
         let nsString = textView.string as NSString
