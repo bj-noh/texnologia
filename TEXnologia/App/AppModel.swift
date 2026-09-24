@@ -19,8 +19,11 @@ final class AppModel: ObservableObject {
     @Published var primaryPreviewPresentation: FilePresentation = .none
     @Published var secondaryPreviewPresentation: FilePresentation = .none
     @Published var editorJump: EditorJump?
+    @Published private(set) var pdfNavigationTarget: PDFNavigationTarget?
     @Published var settings: AppSettings = .default
-    @Published var statusMessage: String = "Drop a LaTeX folder, .tex or .bib file, or .zip archive to begin."
+    @Published var statusMessage: String = "" {
+        didSet { scheduleStatusDismissal() }
+    }
     @Published var isImporting: Bool = false
     @Published private(set) var isCompiling = false
     @Published private(set) var compilingFileName: String?
@@ -47,6 +50,9 @@ final class AppModel: ObservableObject {
     }
     private var selectedFileEncoding: String.Encoding = .utf8
     private var fileLoadToken: UInt64 = 0
+    private var pendingEditorJump: EditorJump?
+    private var statusDismissTask: Task<Void, Never>?
+    private let statusMessageDuration: Duration
 
     lazy var chatSession: ChatSession = ChatSession(appModel: self)
 
@@ -181,11 +187,13 @@ final class AppModel: ObservableObject {
 
     init(
         loadPersistedState: Bool = true,
+        statusMessageDuration: Duration = .seconds(5),
         buildDocument: @escaping (BuildConfiguration) async -> BuildResult = { configuration in
             await LatexBuildService().build(configuration: configuration)
         }
     ) {
         self.buildDocument = buildDocument
+        self.statusMessageDuration = statusMessageDuration
         guard loadPersistedState else { return }
         settings = SettingsStore.loadMigratingIfNeeded()
         restoreSessionStateIfNeeded()
@@ -350,6 +358,8 @@ final class AppModel: ObservableObject {
 
     func loadSelectedFile() {
         fileLoadToken &+= 1
+        pendingEditorJump = nil
+        editorJump = nil
 
         guard let selectedFileURL else {
             isLoadingEditorFile = false
@@ -448,6 +458,10 @@ final class AppModel: ObservableObject {
             cleanDiskTextByURL[url] = text
             fileSaveStates[url] = .saved
             statusMessage = "Opened \(url.lastPathComponent)."
+            if let jump = pendingEditorJump, jump.location.fileURL == url {
+                editorJump = jump
+                pendingEditorJump = nil
+            }
         case .tooLarge:
             loadReadOnlyPreview(for: url)
         case .failed(let description):
@@ -715,9 +729,45 @@ final class AppModel: ObservableObject {
         statusMessage = message
     }
 
+    private func scheduleStatusDismissal() {
+        statusDismissTask?.cancel()
+        guard !statusMessage.isEmpty else { return }
+        let duration = statusMessageDuration
+        statusDismissTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: duration) }
+            catch { return }
+            guard !Task.isCancelled else { return }
+            self?.statusMessage = ""
+        }
+    }
+
+    @discardableResult
+    func revealSourceLocation(_ location: TextLocation) -> Bool {
+        guard FileManager.default.fileExists(atPath: location.fileURL.path) else {
+            setStatus("Source file not found: \(location.fileURL.lastPathComponent)")
+            return false
+        }
+        if editorFileURL != location.fileURL || selectedFilePresentation != .text {
+            selectFile(location.fileURL)
+        }
+        let jump = EditorJump(location: location)
+        if isLoadingEditorFile {
+            pendingEditorJump = jump
+        } else {
+            editorJump = jump
+        }
+        return true
+    }
+
+    private var syncTeXBinary: URL? {
+        let toolchain = ToolchainResolver().resolve(year: settings.toolchainYear)
+        return toolchain.synctex ?? SyncTeXService.resolveBinary(near: [toolchain.path(for: settings.defaultEngine)])
+    }
+
     func syncTeXForward() {
         SyncTeXBridge.shared.editorFileURL = editorFileURL
-        guard let (fileURL, line, column) = SyncTeXBridge.shared.currentEditorLocation() else {
+        guard !isLoadingEditorFile, selectedFilePresentation == .text,
+              let (fileURL, line, column) = SyncTeXBridge.shared.currentEditorLocation() else {
             setStatus("SyncTeX: open a .tex file in the editor first.")
             return
         }
@@ -725,12 +775,14 @@ final class AppModel: ObservableObject {
             setStatus("SyncTeX: compile the document first to produce a PDF.")
             return
         }
-        let synctex = SyncTeXService.resolveBinary(near: [])
+        let synctex = syncTeXBinary
         guard let synctex else {
             setStatus("SyncTeX: synctex binary not found in TeX Live.")
             return
         }
         setStatus("SyncTeX → searching PDF location for line \(line)…")
+        let workspaceID = workspace?.id
+        let paneID = focusedPreviewPane
         Task { @MainActor in
             let result = await SyncTeXService.forward(
                 sourceFile: fileURL,
@@ -739,10 +791,12 @@ final class AppModel: ObservableObject {
                 outputPDF: pdfURL,
                 synctex: synctex
             )
+            guard workspace?.id == workspaceID, editorFileURL == fileURL,
+                  pdfDocumentURL == pdfURL, focusedPreviewPane == paneID else { return }
             if let result {
-                NotificationCenter.default.post(
-                    name: .pdfNavigateTo,
-                    object: PDFNavigationTarget(page: result.page, x: result.x, y: result.y)
+                showInFocusedPreview(.pdf(pdfURL))
+                pdfNavigationTarget = PDFNavigationTarget(
+                    pdfURL: pdfURL, paneID: paneID, page: result.page, x: result.x, y: result.y
                 )
                 setStatus("SyncTeX → PDF page \(result.page)")
             } else {
@@ -752,35 +806,37 @@ final class AppModel: ObservableObject {
     }
 
     func syncTeXReverse() {
-        guard let (pdfURL, page, x, y) = SyncTeXBridge.shared.currentPDFTopLocation() else {
+        guard let (pdfURL, page, x, y) = SyncTeXBridge.shared.currentPDFLocation(in: focusedPreviewPane),
+              pdfURL == focusedPDFURL else {
             setStatus("SyncTeX: open a PDF preview first.")
             return
         }
-        let synctex = SyncTeXService.resolveBinary(near: [])
+        let synctex = syncTeXBinary
         guard let synctex else {
             setStatus("SyncTeX: synctex binary not found in TeX Live.")
             return
         }
         setStatus("SyncTeX ← searching source location for PDF page \(page)…")
+        let workspaceID = workspace?.id
+        let loadToken = fileLoadToken
+        let paneID = focusedPreviewPane
+        let sourceDirectory = workspace?.mainFileURL?.deletingLastPathComponent() ?? pdfURL.deletingLastPathComponent()
         Task { @MainActor in
             let result = await SyncTeXService.reverse(
                 page: page, x: x, y: y, outputPDF: pdfURL, synctex: synctex
             )
+            guard workspace?.id == workspaceID, fileLoadToken == loadToken,
+                  focusedPreviewPane == paneID, focusedPDFURL == pdfURL else { return }
             guard let result else {
                 setStatus("SyncTeX reverse: no source position found.")
                 return
             }
-            let targetURL = URL(fileURLWithPath: result.inputFile)
-            if editorFileURL != targetURL {
-                if FileManager.default.fileExists(atPath: targetURL.path) {
-                    selectFile(targetURL)
-                }
-            }
-            editorJump = EditorJump(location: TextLocation(
+            let targetURL = URL(fileURLWithPath: result.inputFile, relativeTo: sourceDirectory).standardizedFileURL
+            guard revealSourceLocation(TextLocation(
                 fileURL: targetURL,
                 line: max(1, result.line),
                 column: max(0, result.column)
-            ))
+            )) else { return }
             setStatus("SyncTeX ← \(targetURL.lastPathComponent):\(result.line)")
         }
     }

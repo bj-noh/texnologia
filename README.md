@@ -48,6 +48,8 @@ Drop a project folder, `.tex` file, or `.bib` file onto the welcome screen, or p
 
 Press `Cmd+S` to save and compile, regardless of the Save button preference. During a build, a spinning indicator and “컴파일 중” label appear beside Compile. Saving again queues one follow-up build with the latest saved changes.
 
+Status messages disappear after five seconds; each new message restarts the timer. Use the arrows between the source editor and preview to navigate a compiled document: **→** finds the PDF location for the editor cursor, and **←** finds the source for the last point clicked in the focused PDF preview. This requires SyncTeX from your TeX installation and a PDF compiled with SyncTeX enabled.
+
 Requires **macOS 14+**, a TeX Live install (MacTeX or BasicTeX — biber and latexmk recommended), and Swift 5.9+ for building from source.
 
 ## Using AI

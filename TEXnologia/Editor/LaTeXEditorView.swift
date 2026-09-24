@@ -78,7 +78,9 @@ struct LaTeXEditorView: NSViewRepresentable {
         context.coordinator.applySettings(to: textView, force: true)
         context.coordinator.updateGutterWidth(for: textView)
         context.coordinator.highlight(textView, force: true)
-        SyncTeXBridge.shared.editorTextView = textView
+        if SyncTeXBridge.shared.editorTextView == nil || textView.window?.firstResponder === textView {
+            SyncTeXBridge.shared.editorTextView = textView
+        }
         return scrollView
     }
 
@@ -88,7 +90,9 @@ struct LaTeXEditorView: NSViewRepresentable {
             scrollView.hasVerticalRuler = true
             scrollView.rulersVisible = true
         }
-        SyncTeXBridge.shared.editorTextView = textView
+        if SyncTeXBridge.shared.editorTextView == nil || textView.window?.firstResponder === textView {
+            SyncTeXBridge.shared.editorTextView = textView
+        }
 
         let settingsChanged = context.coordinator.settings != settings
         let syntaxModeChanged = context.coordinator.syntaxMode != syntaxMode
@@ -100,7 +104,6 @@ struct LaTeXEditorView: NSViewRepresentable {
         if textView.string != text {
             context.coordinator.replaceText(text, in: textView)
             context.coordinator.highlight(textView, force: true)
-            return
         }
 
         if settingsChanged || syntaxModeChanged {
@@ -183,6 +186,17 @@ struct LaTeXEditorView: NSViewRepresentable {
             let item = NSMenuItem()
             item.tag = NSTextFinder.Action.showFindInterface.rawValue
             textView.performTextFinderAction(item)
+        }
+
+        func textDidBeginEditing(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            SyncTeXBridge.shared.editorTextView = textView
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard !isProgrammaticChange, let textView = notification.object as? NSTextView,
+                  textView.window?.firstResponder === textView else { return }
+            SyncTeXBridge.shared.editorTextView = textView
         }
 
         func textDidChange(_ notification: Notification) {
@@ -346,11 +360,13 @@ struct LaTeXEditorView: NSViewRepresentable {
         func performJumpIfNeeded(_ jump: EditorJump?, in textView: NSTextView) {
             guard let jump, handledJumpID != jump.id else { return }
             handledJumpID = jump.id
+            guard SyncTeXBridge.shared.editorTextView === textView else { return }
 
             let range = textView.characterRange(forLine: jump.location.line, column: jump.location.column)
             textView.setSelectedRange(range)
             textView.scrollRangeToVisible(range)
             textView.showFindIndicator(for: range)
+            textView.window?.makeFirstResponder(textView)
             lineNumberView?.needsDisplay = true
         }
 

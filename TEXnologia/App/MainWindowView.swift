@@ -114,14 +114,21 @@ struct MainWindowView: View {
                 .frame(minWidth: 360, idealWidth: 620)
                 .layoutPriority(1)
 
-                RightPreviewPane(
-                    focusedPane: $appModel.focusedPreviewPane,
-                    primaryPresentation: appModel.primaryPreviewPresentation,
-                    secondaryPresentation: appModel.secondaryPreviewPresentation,
-                    isSplit: $rightPaneSplit
-                )
-                .folioPane()
-                .frame(minWidth: 280, idealWidth: 480)
+                HStack(spacing: 8) {
+                    SyncNavigationControls()
+                        .frame(width: 36)
+                        .frame(maxHeight: .infinity)
+
+                    RightPreviewPane(
+                        focusedPane: $appModel.focusedPreviewPane,
+                        primaryPresentation: appModel.primaryPreviewPresentation,
+                        secondaryPresentation: appModel.secondaryPreviewPresentation,
+                        isSplit: $rightPaneSplit
+                    )
+                    .folioPane()
+                    .frame(minWidth: 280)
+                }
+                .frame(minWidth: 324, idealWidth: 524)
                 .layoutPriority(1)
 
                 if appModel.isChatPaneVisible {
@@ -238,11 +245,13 @@ struct MainWindowView: View {
 
     private var workspaceFooter: some View {
         HStack(spacing: 8) {
-            Circle().fill(FolioTheme.accent.opacity(0.65)).frame(width: 5, height: 5)
-            Text(appModel.statusMessage)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .help(appModel.statusMessage)
+            if !appModel.statusMessage.isEmpty {
+                Circle().fill(FolioTheme.accent.opacity(0.65)).frame(width: 5, height: 5)
+                Text(appModel.statusMessage)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(appModel.statusMessage)
+            }
             Spacer(minLength: 20)
             if appModel.editorFileURL != nil {
                 Text("\(appModel.editorText.components(separatedBy: .newlines).count) lines")
@@ -848,18 +857,6 @@ private struct RightPreviewPane: View {
             .padding(.top, 49)
             .padding(.trailing, 8)
         }
-        .overlay(alignment: .topLeading) {
-            VStack(spacing: 6) {
-                SyncArrowButton(systemName: "arrow.right", help: "Find the PDF location for the current editor cursor (forward SyncTeX)") {
-                    appModel.syncTeXForward()
-                }
-                SyncArrowButton(systemName: "arrow.left", help: "Find the source line for the current PDF position (reverse SyncTeX)") {
-                    appModel.syncTeXReverse()
-                }
-            }
-            .padding(.top, 49)
-            .padding(.leading, 8)
-        }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .fixedSize(horizontal: false, vertical: false)
     }
@@ -931,7 +928,9 @@ private struct PreviewPane: View {
 
             switch presentation {
             case .pdf(let url):
-                PDFPaneView(documentURL: url, refreshID: appModel.pdfBuildRevision)
+                PDFPaneView(documentURL: url, refreshID: appModel.pdfBuildRevision,
+                            paneID: paneID, navigationTarget: appModel.pdfNavigationTarget,
+                            onActivate: { focusedPane = paneID })
             case .image(let url):
                 ImagePreviewPane(fileURL: url)
             default:
@@ -1318,6 +1317,31 @@ private extension View {
     }
 }
 
+private struct SyncNavigationControls: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    var body: some View {
+        VStack(spacing: 10) {
+            SyncArrowButton(systemName: "arrow.right", help: "원문 → 미리보기: 에디터 커서 위치로 이동") {
+                appModel.syncTeXForward()
+            }
+            .disabled(appModel.editorFileURL == nil || appModel.pdfDocumentURL == nil || appModel.isLoadingEditorFile)
+
+            SyncArrowButton(systemName: "arrow.left", help: "미리보기 → 원문: PDF에서 클릭한 위치로 이동") {
+                appModel.syncTeXReverse()
+            }
+            .disabled(!hasPDFPreview)
+        }
+    }
+
+    private var hasPDFPreview: Bool {
+        let presentation = appModel.focusedPreviewPane == .primary
+            ? appModel.primaryPreviewPresentation : appModel.secondaryPreviewPresentation
+        if case .pdf = presentation { return true }
+        return false
+    }
+}
+
 private struct SyncArrowButton: View {
     let systemName: String
     let help: String
@@ -1340,5 +1364,6 @@ private struct SyncArrowButton: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
     }
 }

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PDFKit
+import SwiftUI
 
 private struct VerificationFailure: Error, CustomStringConvertible {
     let description: String
@@ -79,12 +80,22 @@ private struct VerifyCompileWorkflow {
             print("PASS a standalone bibliography can be edited and saved without inventing a compile root")
             try await reopeningNestedDocumentsPreservesTheProjectAndDirtyBuffers(in: temporaryRoot)
             print("PASS nested TeX and bibliography opens reuse their project, main file, and unsaved buffers")
+            try await statusMessagesExpireAfterTheLatestUpdate()
+            print("PASS status messages expire and repeated messages restart the timer")
+            try await sourceNavigationWaitsForFileLoad(in: temporaryRoot)
+            print("PASS source navigation waits for the destination file to load")
+            try await pdfNavigationWaitsForDocumentLoad(in: temporaryRoot)
+            print("PASS PDF navigation survives asynchronous loading without repeating or moving another PDF")
+            try sourceNavigationDoesNotReplayInAnotherEditor()
+            print("PASS source navigation affects only the active editor and does not replay after focus changes")
+            try pdfClicksTrackTheCorrectPane(in: temporaryRoot)
+            print("PASS reverse navigation uses clicked PDF coordinates in the requested pane")
             if CommandLine.arguments.contains("--real-tex") {
                 try await installedTeXProducesPDF(in: temporaryRoot)
                 print("PASS the installed TeX engine compiles a saved article into a PDF")
-                print("PASS compile workflow: 15 controlled scenarios + installed TeX")
+                print("PASS compile workflow: 20 controlled scenarios + installed TeX")
             } else {
-                print("PASS compile workflow: 15 controlled scenarios")
+                print("PASS compile workflow: 20 controlled scenarios")
             }
         } catch {
             fputs("FAIL compile workflow: \(error)\n", stderr)
@@ -408,6 +419,105 @@ private struct VerifyCompileWorkflow {
         try writePDF(pageCount: 2, to: pdfURL)
         coordinator.load(pdfURL, refreshID: 1, into: pdfView)
         try await eventually("rebuilt PDF at the same URL to expose both pages") { pdfView.document?.pageCount == 2 }
+    }
+
+    @MainActor
+    private static func statusMessagesExpireAfterTheLatestUpdate() async throws {
+        let model = AppModel(loadPersistedState: false, statusMessageDuration: .milliseconds(300))
+        model.setStatus("Saved main.tex.")
+        try await Task.sleep(for: .milliseconds(200))
+        model.setStatus("Saved main.tex.")
+        try await Task.sleep(for: .milliseconds(200))
+        try require(model.statusMessage == "Saved main.tex.", "The earlier timer must not clear a repeated message")
+        try await eventually("latest status message to expire") { model.statusMessage.isEmpty }
+    }
+
+    @MainActor
+    private static func sourceNavigationWaitsForFileLoad(in root: URL) async throws {
+        let project = try makeProject(in: root, name: "source navigation")
+        let chapter = project.root.appendingPathComponent("chapter.tex")
+        let chapterText = (1...100).map { "Line \($0)" }.joined(separator: "\n")
+        try chapterText.write(to: chapter, atomically: true, encoding: .utf8)
+        let model = AppModel(loadPersistedState: false)
+        model.openProjectResource(at: project.source)
+        try await eventually("main source to load") { model.canSaveEditorFile }
+        model.revealSourceLocation(TextLocation(fileURL: chapter, line: 42, column: 3))
+        try require(model.editorJump == nil, "Do not consume the jump against the old or empty buffer")
+        try await eventually("chapter text and jump to become available together") {
+            model.editorText == chapterText && model.editorJump?.location.fileURL == chapter
+                && model.editorJump?.location.line == 42 && !model.isLoadingEditorFile
+        }
+    }
+
+    @MainActor
+    private static func pdfNavigationWaitsForDocumentLoad(in root: URL) async throws {
+        let url = root.appendingPathComponent("navigation.pdf")
+        try writePDF(pageCount: 2, to: url)
+        let view = PDFView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))
+        let coordinator = PDFKitRepresentable.Coordinator()
+        let target = PDFNavigationTarget(pdfURL: url, paneID: .primary, page: 2, x: 50, y: 100)
+        coordinator.load(url, into: view)
+        coordinator.navigate(to: target, in: view)
+        try await eventually("PDF load followed by navigation to page two") {
+            guard let document = view.document, let page = view.currentPage else { return false }
+            return document.index(for: page) == 1
+        }
+        guard let first = view.document?.page(at: 0) else { throw VerificationFailure(description: "Missing first PDF page") }
+        view.go(to: first)
+        coordinator.navigate(to: target, in: view)
+        try require(view.currentPage === first, "A consumed request must not jump again on every view update")
+        let unrelated = PDFNavigationTarget(pdfURL: root.appendingPathComponent("other.pdf"), paneID: .primary, page: 2, x: 50, y: 100)
+        coordinator.navigate(to: unrelated, in: view)
+        try require(view.currentPage === first, "A request for another PDF must not navigate this document")
+    }
+
+    @MainActor
+    private static func sourceNavigationDoesNotReplayInAnotherEditor() throws {
+        let first = NSTextView()
+        let second = NSTextView()
+        first.string = "First\nSecond\nThird"
+        second.string = first.string
+        first.setSelectedRange(NSRange(location: 0, length: 0))
+        second.setSelectedRange(NSRange(location: 0, length: 0))
+        let primary = LaTeXEditorView.Coordinator(text: .constant(first.string), settings: .default, syntaxMode: .latex)
+        let secondary = LaTeXEditorView.Coordinator(text: .constant(second.string), settings: .default, syntaxMode: .latex)
+        let jump = EditorJump(location: TextLocation(fileURL: URL(fileURLWithPath: "/tmp/main.tex"), line: 3, column: 0))
+        SyncTeXBridge.shared.editorTextView = first
+        primary.performJumpIfNeeded(jump, in: first)
+        secondary.performJumpIfNeeded(jump, in: second)
+        try require(first.selectedRange().location == 13 && second.selectedRange().location == 0,
+                    "Only the active source pane should move: primary=\(first.selectedRange()), secondary=\(second.selectedRange())")
+        SyncTeXBridge.shared.editorTextView = second
+        secondary.performJumpIfNeeded(jump, in: second)
+        try require(second.selectedRange().location == 0, "Focusing another editor must not replay the old jump")
+        SyncTeXBridge.shared.editorTextView = nil
+    }
+
+    @MainActor
+    private static func pdfClicksTrackTheCorrectPane(in root: URL) throws {
+        let firstURL = root.appendingPathComponent("click-primary.pdf")
+        let secondURL = root.appendingPathComponent("click-secondary.pdf")
+        try writePDF(pageCount: 1, to: firstURL)
+        try writePDF(pageCount: 1, to: secondURL)
+        let views = [PDFView(frame: NSRect(x: 0, y: 0, width: 400, height: 600)),
+                     PDFView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))]
+        for (index, pane) in [PreviewPaneID.primary, .secondary].enumerated() {
+            let view = views[index]
+            view.document = PDFDocument(url: index == 0 ? firstURL : secondURL)
+            view.layoutDocumentView()
+            guard let page = view.document?.page(at: 0) else { throw VerificationFailure(description: "Missing PDF page") }
+            let point = view.convert(NSPoint(x: 80, y: 450), from: page)
+            SyncTeXBridge.shared.recordPDFClick(at: point, in: view, paneID: pane)
+        }
+        for (index, pane) in [PreviewPaneID.primary, .secondary].enumerated() {
+            guard let location = SyncTeXBridge.shared.currentPDFLocation(in: pane) else {
+                throw VerificationFailure(description: "PDF click was not recorded")
+            }
+            try require(location.pdfURL == (index == 0 ? firstURL : secondURL), "Use the requested pane, not the last rendered one")
+            try require(location.page == 1 && abs(location.x - 80) < 0.01 && abs(location.y - 150) < 0.01,
+                        "Convert the clicked point from PDFKit to SyncTeX coordinates")
+        }
+        withExtendedLifetime(views) {}
     }
 
     private static func writePDF(pageCount: Int, to url: URL) throws {

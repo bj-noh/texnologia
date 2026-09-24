@@ -4,9 +4,13 @@ import SwiftUI
 struct PDFPaneView: View {
     var documentURL: URL?
     var refreshID: Int = 0
+    var paneID: PreviewPaneID? = nil
+    var navigationTarget: PDFNavigationTarget? = nil
+    var onActivate: (() -> Void)? = nil
 
     var body: some View {
-        PDFKitRepresentable(documentURL: documentURL, refreshID: refreshID)
+        PDFKitRepresentable(documentURL: documentURL, refreshID: refreshID,
+                            paneID: paneID, navigationTarget: navigationTarget, onActivate: onActivate)
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
             .fixedSize(horizontal: false, vertical: false)
             .overlay {
@@ -114,21 +118,34 @@ private struct PDFPreviewEmptyState: View {
 struct PDFKitRepresentable: NSViewRepresentable {
     var documentURL: URL?
     var refreshID: Int = 0
+    var paneID: PreviewPaneID? = nil
+    var navigationTarget: PDFNavigationTarget? = nil
+    var onActivate: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> PDFView {
         let view = NonResizingPDFView()
         view.autoScales = true
         view.displayMode = .singlePageContinuous
         view.backgroundColor = FolioTheme.nsCanvas
-        SyncTeXBridge.shared.pdfView = view
-        context.coordinator.registerNavigationObserver(for: view)
+        configureInteraction(for: view)
         return view
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
         pdfView.backgroundColor = FolioTheme.nsCanvas
         context.coordinator.load(documentURL, refreshID: refreshID, into: pdfView)
-        SyncTeXBridge.shared.pdfView = pdfView
+        configureInteraction(for: pdfView)
+        context.coordinator.navigate(to: navigationTarget?.paneID == paneID ? navigationTarget : nil, in: pdfView)
+    }
+
+    private func configureInteraction(for view: PDFView) {
+        guard let paneID, let view = view as? NonResizingPDFView else { return }
+        SyncTeXBridge.shared.registerPDFView(view, for: paneID)
+        view.onClick = { [weak view] point in
+            guard let view else { return }
+            onActivate?()
+            SyncTeXBridge.shared.recordPDFClick(at: point, in: view, paneID: paneID)
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -139,29 +156,30 @@ struct PDFKitRepresentable: NSViewRepresentable {
         private var lastURL: URL?
         private var lastRefreshID: Int?
         private var loadID = UUID()
-        private var navigationObserver: NSObjectProtocol?
+        private var pendingNavigation: PDFNavigationTarget?
+        private var handledNavigationID: UUID?
 
-        deinit {
-            if let navigationObserver {
-                NotificationCenter.default.removeObserver(navigationObserver)
-            }
+        func navigate(to target: PDFNavigationTarget?, in pdfView: PDFView) {
+            pendingNavigation = target
+            applyPendingNavigation(in: pdfView)
         }
 
-        func registerNavigationObserver(for pdfView: PDFView) {
-            guard navigationObserver == nil else { return }
-            navigationObserver = NotificationCenter.default.addObserver(
-                forName: .pdfNavigateTo,
-                object: nil,
-                queue: .main
-            ) { [weak pdfView] notification in
-                guard let pdfView,
-                      let target = notification.object as? PDFNavigationTarget,
-                      let document = pdfView.document,
-                      let page = document.page(at: max(0, target.page - 1)) else { return }
-                let bounds = page.bounds(for: .mediaBox)
-                let pointY = bounds.height - CGFloat(target.y)
-                let destination = PDFDestination(page: page, at: NSPoint(x: CGFloat(target.x), y: pointY))
-                pdfView.go(to: destination)
+        private func applyPendingNavigation(in pdfView: PDFView) {
+            guard let target = pendingNavigation, handledNavigationID != target.id,
+                  let document = pdfView.document,
+                  document.documentURL?.standardizedFileURL == target.pdfURL.standardizedFileURL,
+                  let page = document.page(at: target.page - 1) else { return }
+            handledNavigationID = target.id
+            let bounds = page.bounds(for: .mediaBox)
+            let point = NSPoint(x: bounds.minX + CGFloat(target.x), y: bounds.maxY - CGFloat(target.y))
+            // Bring the matching line into view and highlight its text.
+            let rect = NSRect(x: point.x - 12, y: point.y - 8, width: 160, height: 20)
+            pdfView.go(to: rect, on: page)
+            SyncTeXBridge.shared.recordPDFClick(
+                at: pdfView.convert(point, from: page), in: pdfView, paneID: target.paneID
+            )
+            if let selection = page.selection(for: rect) {
+                pdfView.setCurrentSelection(selection, animate: true)
             }
         }
 
@@ -191,6 +209,7 @@ struct PDFKitRepresentable: NSViewRepresentable {
                        let page = document.page(at: min(currentPageIndex, max(0, document.pageCount - 1))) {
                         pdfView.go(to: page)
                     }
+                    self.applyPendingNavigation(in: pdfView)
                 }
             }
         }
@@ -198,6 +217,14 @@ struct PDFKitRepresentable: NSViewRepresentable {
 }
 
 private final class NonResizingPDFView: PDFView {
+    var onClick: ((NSPoint) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        onClick?(point)
+        super.mouseDown(with: event)
+    }
+
     override var intrinsicContentSize: NSSize {
         NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
     }

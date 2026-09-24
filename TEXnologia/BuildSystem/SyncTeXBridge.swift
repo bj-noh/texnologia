@@ -7,7 +7,32 @@ final class SyncTeXBridge {
     weak var editorTextView: NSTextView?
     var editorFileURL: URL?
 
-    weak var pdfView: PDFView?
+    private final class Preview {
+        weak var view: PDFView?
+        weak var clickedDocument: PDFDocument?
+        var clickedLocation: PDFLocationReport?
+
+        init(view: PDFView) { self.view = view }
+    }
+
+    private var previews: [PreviewPaneID: Preview] = [:]
+
+    func registerPDFView(_ view: PDFView, for paneID: PreviewPaneID) {
+        if previews[paneID]?.view !== view { previews[paneID] = Preview(view: view) }
+    }
+
+    func recordPDFClick(at point: NSPoint, in view: PDFView, paneID: PreviewPaneID) {
+        registerPDFView(view, for: paneID)
+        guard let document = view.document, let url = document.documentURL,
+              let page = view.page(for: point, nearest: false) else { return }
+        let location = view.convert(point, to: page)
+        let bounds = page.bounds(for: .mediaBox)
+        previews[paneID]?.clickedDocument = document
+        previews[paneID]?.clickedLocation = PDFLocationReport(
+            pdfURL: url, page: document.index(for: page) + 1,
+            x: Double(location.x - bounds.minX), y: Double(bounds.maxY - location.y)
+        )
+    }
 
     private init() {}
 
@@ -18,15 +43,26 @@ final class SyncTeXBridge {
         return (fileURL, line, column)
     }
 
-    func currentPDFTopLocation() -> (pdfURL: URL, page: Int, x: Double, y: Double)? {
-        guard let pdfView, let document = pdfView.document, let page = pdfView.currentPage else { return nil }
-        guard let url = document.documentURL else { return nil }
-        let pageIndex = document.index(for: page) + 1
+    func currentPDFLocation(in paneID: PreviewPaneID) -> (pdfURL: URL, page: Int, x: Double, y: Double)? {
+        guard let preview = previews[paneID], let view = preview.view,
+              let document = view.document, let url = document.documentURL else { return nil }
+        if preview.clickedDocument === document, let location = preview.clickedLocation {
+            return (location.pdfURL, location.page, location.x, location.y)
+        }
+        // Before the first click, use selected text or the visible page's center.
+        let center = NSPoint(x: view.visibleRect.midX, y: view.visibleRect.midY)
+        guard let page = view.currentSelection?.pages.first ?? view.page(for: center, nearest: true) else { return nil }
+        let point: NSPoint
+        if let selection = view.currentSelection, selection.pages.contains(page) {
+            let selectionBounds = selection.bounds(for: page)
+            point = NSPoint(x: selectionBounds.midX, y: selectionBounds.midY)
+        } else {
+            point = view.convert(center, to: page)
+        }
         let bounds = page.bounds(for: .mediaBox)
-        let visible = pdfView.convert(pdfView.visibleRect, to: page)
-        let x = max(0, Double(bounds.midX))
-        let topY = Double(bounds.height - visible.maxY)
-        return (url, pageIndex, x, max(0, topY))
+        return (url, document.index(for: page) + 1,
+                Double(max(0, min(bounds.width, point.x - bounds.minX))),
+                Double(max(0, min(bounds.height, bounds.maxY - point.y))))
     }
 
     static func lineAndColumn(in text: String, at utf16Offset: Int) -> (Int, Int) {

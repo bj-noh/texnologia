@@ -29,7 +29,10 @@ struct PDFLocationReport {
     var y: Double
 }
 
-struct PDFNavigationTarget {
+struct PDFNavigationTarget: Identifiable, Equatable {
+    var id = UUID()
+    var pdfURL: URL
+    var paneID: PreviewPaneID
     var page: Int
     var x: Double
     var y: Double
